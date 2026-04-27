@@ -12,6 +12,8 @@
 
 Information about configuration and supported features can be found on [**TheArcadeStriker's flycast wiki**](https://github.com/TheArcadeStriker/flycast-wiki/wiki).
 
+Project planning details are available in the [AuraCast Improvement Roadmap](docs/AuraCast%20Improvement%20Roadmap.md).
+
 Join us on our [**Discord server**](https://discord.gg/X8YWP8w) for a chat. 
 
 ## Install
