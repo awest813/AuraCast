@@ -255,6 +255,7 @@ struct rend_context
 	Rect tileClip;
 	u32 fb_W_LINESTRIDE;
 	u32 fb_W_SOF1;
+	u32 fb_W_SOF2;
 	FB_W_CTRL_type fb_W_CTRL;
 	u32 framebufferWidth;
 	u32 framebufferHeight;

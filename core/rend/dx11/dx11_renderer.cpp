@@ -1252,7 +1252,7 @@ void DX11Renderer::writeFramebufferToVRAM()
 		height = scaledH;
 		fbTexture = fbScaledTexture;
 	}
-	u32 texAddress = rendContext->fb_W_SOF1 & VRAM_MASK; // TODO SCALER_CTL.interlace, SCALER_CTL.fieldselect
+	u32 texAddress = getFbWriteAddress(*rendContext);
 	u32 linestride = rendContext->fb_W_LINESTRIDE * 8;
 
 	D3D11_TEXTURE2D_DESC desc;

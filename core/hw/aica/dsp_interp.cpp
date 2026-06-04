@@ -179,6 +179,12 @@ void runStep()
 
 				ADDR <<= 1;					// Word -> byte address
 				ADDR += state.RBP;			// RBP is already a byte address
+				const u32 widx = step & 3;
+				if (state.MEMWVALID[widx])
+				{
+					*(u16 *)&aica_ram[state.MEMWADDR[widx] & ARAM_MASK] = state.MEMWDATA[widx];
+					state.MEMWVALID[widx] = 0;
+				}
 				if (MRD)			// memory only allowed on odd. DoA inserts NOPs on even
 				{
 					//if (NOFL)
@@ -188,11 +194,10 @@ void runStep()
 				}
 				if (MWT)
 				{
-					// FIXME We should wait for the next step to copy stuff to SRAM (same as read)
-					//if (NOFL)
-					//	*(s16 *)&aica_ram[ADDR] = SHIFTED >> 8;
-					//else
-						*(u16 *)&aica_ram[ADDR & ARAM_MASK] = PACK(SHIFTED);
+					const u32 qidx = (step + 2) & 3;
+					state.MEMWDATA[qidx] = PACK(SHIFTED);
+					state.MEMWADDR[qidx] = ADDR;
+					state.MEMWVALID[qidx] = 1;
 				}
 			}
 		}

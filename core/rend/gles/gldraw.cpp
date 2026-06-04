@@ -344,8 +344,8 @@ static void drawSorted(int first, int count, bool multipass)
 			const PolyParam* params = &gl.rendContext->global_param_tr[gl.rendContext->sortedTriangles[p].polyIndex];
 			if (!params->isp.ZWriteDis)
 			{
-				// FIXME no clipping in modvol shader
-				//SetTileClip(gp->tileclip,true);
+				Rect clip_rect;
+				setTileClip(params->tileclip, clip_rect);
 
 				SetCull(params->isp.CullMode ^ 1);
 
@@ -741,7 +741,7 @@ void writeFramebufferToVRAM()
 		width = scaledW;
 		height = scaledH;
 	}
-	u32 tex_addr = gl.rendContext->fb_W_SOF1 & VRAM_MASK; // TODO SCALER_CTL.interlace, SCALER_CTL.fieldselect
+	u32 tex_addr = getFbWriteAddress(*gl.rendContext);
 
 	glPixelStorei(GL_PACK_ALIGNMENT, 1);
 	u32 linestride = gl.rendContext->fb_W_LINESTRIDE * 8;

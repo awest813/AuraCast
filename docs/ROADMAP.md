@@ -265,8 +265,21 @@ Focus: SH4, memory, disc, audio, PVR—what most DC games stress.
 
 ---
 
+## Incremental audit log
+
+| Date | Fixed | Still open |
+|------|-------|------------|
+| 2026-06-04 | **GD-ROM:** `GDCC_GETTOC` HLE, CD read sector-type mapping, PIO `<= 0xFFFF` check. See `core/hw/gdrom/README.md`. | v3 redesign, SPI `0x70`, HLE DMA callback hack, CUE/CDI/imgread FIXMEs |
+| 2026-06-04 | **SH4 dynarec:** SSA `shop_ifb` bumps all register versions. | ConstProp gaps, decoder `rte`/`trapa`/`sleep`, MMU/WinCE, `sh4_cycles` area waits |
+| 2026-06-04 | **PVR:** `getFbWriteAddress()` — `SCALER_CTL.interlace` + `fieldselect` on GLES/DX9/DX11/Vulkan write-back. Modvol **outside** tile clip on translucent Z-write (GLES/DX9). | Modvol **inside** clip (all backends), OIT modvol tile clip, Vulkan OIT subpass |
+| 2026-06-04 | **AICA:** DSP interpreter SRAM write deferred 2 steps (matches MRD pipeline). | Dynarec DSP backends still immediate-write; volume stacking unverified (Neil Corlett notes) |
+| — | **Deferred (non-goals):** Naomi ROM parity, iOS, rec_v1 revival. | rec_v2: ARM64/x64 offsets, mainloop, targeted SMC invalidation |
+
+---
+
 ## Revision history
 
 | Date | Change |
 |------|--------|
+| 2026-06-04 | Incremental audit log added; documents first roadmap fix pass |
 | 2026-06-04 | Initial unified roadmap from in-repo sources and core TODO audit |

@@ -87,6 +87,7 @@ void getScaledFramebufferSize(const rend_context& rendCtx, int& width, int& heig
 float getOutputFramebufferAspectRatio();
 void getDCFramebufferReadSize(const FramebufferInfo& info, int& width, int& height);
 void getWriteFBToVramParams(const rend_context& ctx, glm::ivec2& scaledSize, Rect& finalClip);
+u32 getFbWriteAddress(const rend_context& ctx);
 
 inline static float getDCFramebufferAspectRatio() {
 	float aspectRatio = config::Rotate90 ? 3.f / 4.f : 4.f / 3.f;

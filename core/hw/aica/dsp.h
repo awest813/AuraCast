@@ -22,6 +22,9 @@ struct DSPState
 	int SHIFTED;	// 24 bit
 	int B;			// 26 bit
 	int MEMVAL[4];
+	u32 MEMWADDR[4];	// deferred SRAM write addresses (pipeline)
+	u16 MEMWDATA[4];	// deferred SRAM write data
+	u8 MEMWVALID[4];	// deferred SRAM write valid flags
 	int FRC_REG;	// 13 bit
 	int Y_REG;		// 24 bit
 	u32 ADRS_REG;	// 13 bit

@@ -387,7 +387,7 @@ static void GD_HLE_Command(gd_command cc)
 	switch(cc)
 	{
 	case GDCC_GETTOC:
-		WARN_LOG(REIOS, "GDROM: *FIXME* CMD GETTOC");
+		GDROM_HLE_ReadTOC();
 		break;
 
 	case GDCC_GETTOC2:

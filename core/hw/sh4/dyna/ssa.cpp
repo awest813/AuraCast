@@ -67,7 +67,11 @@ void SSAOptimizer::AddVersionPass()
 
 	for (shil_opcode& op : block->oplist)
 	{
-		// FIXME shop_ifb should be assumed to increase versions too? (increment all reg_versions[])
+		if (op.op == shop_ifb)
+		{
+			for (u32 i = 0; i < sh4_reg_count; i++)
+				reg_versions[i]++;
+		}
 		AddVersionToOperand(op.rs1, false);
 		AddVersionToOperand(op.rs2, false);
 		AddVersionToOperand(op.rs3, false);

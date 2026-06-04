@@ -110,7 +110,7 @@ void BaseDrawer::scaleAndWriteFramebuffer(vk::CommandBuffer commandBuffer, Frame
 	tmpBuf.init(width, height);
 	finalFB->GetBufferData()->download(width * height * 4, tmpBuf.data());
 
-	WriteFramebuffer(width, height, (u8 *)tmpBuf.data(), rendContext->fb_W_SOF1 & VRAM_MASK,
+	WriteFramebuffer(width, height, (u8 *)tmpBuf.data(), getFbWriteAddress(*rendContext),
 			rendContext->fb_W_CTRL, rendContext->fb_W_LINESTRIDE * 8, finalClip);
 
 	delete scaledFB;

@@ -562,8 +562,8 @@ void D3DRenderer::drawSorted(int first, int count, bool multipass)
 			const PolyParam *params = &rendContext->global_param_tr[rendContext->sortedTriangles[p].polyIndex];
 			if (!params->isp.ZWriteDis)
 			{
-				// FIXME no clipping in modvol shader
-				//SetTileClip(gp->tileclip,true);
+				Rect clip_rect;
+				setTileClip(params->tileclip, clip_rect);
 
 				devCache.SetRenderState(D3DRS_CULLMODE, CullMode[params->isp.CullMode]);
 				device->DrawIndexedPrimitive(D3DPT_TRIANGLELIST, 0, 0, rendContext->sortedTriangles[p].count, rendContext->sortedTriangles[p].first, rendContext->sortedTriangles[p].count / 3);
@@ -1339,7 +1339,7 @@ void D3DRenderer::writeFramebufferToVRAM()
 		height = scaledH;
 		fbSurface = fbScaledSurface;
 	}
-	u32 texAddress = rendContext->fb_W_SOF1 & VRAM_MASK; // TODO SCALER_CTL.interlace, SCALER_CTL.fieldselect
+	u32 texAddress = getFbWriteAddress(*rendContext);
 	u32 linestride = rendContext->fb_W_LINESTRIDE * 8;
 
 	ComPtr<IDirect3DSurface9> offscreenSurface;
