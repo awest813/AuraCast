@@ -37,6 +37,8 @@ int flycast_init(int argc, char* argv[]);
 void flycast_term();
 void dc_exit();
 void dc_savestate(int index = 0, const u8 *pngData = nullptr, u32 pngSize = 0);
+bool dc_serializeSavestate(std::vector<u8>& buffer);
+bool dc_writeSavestate(int index, const u8 *stateData, u32 stateSize, const u8 *pngData = nullptr, u32 pngSize = 0, bool notify = true);
 void dc_loadstate(int index = 0);
 time_t dc_getStateCreationDate(int index);
 void dc_getStateScreenshot(int index, std::vector<u8>& pngData);

@@ -63,6 +63,8 @@ using namespace i18n;
 #endif
 #include <mutex>
 #include <algorithm>
+#include <atomic>
+#include <future>
 
 bool game_started;
 
@@ -462,6 +464,7 @@ void gui_start_game(const std::string& path)
 void gui_stop_game(const std::string& message)
 {
 	const LockGuard lock(guiMutex);
+	waitForPendingSavestate();
 	if (!commandLineStart)
 	{
 		// Exit to main menu
@@ -487,25 +490,106 @@ static void appendVectorData(void *context, void *data, int size)
 	v.insert(v.end(), bytes, bytes + size);
 }
 
+static void getScreenshotRaw(std::vector<u8>& rawData, int& width, int& height)
+{
+	rawData.clear();
+	height = 0;
+	if (renderer == nullptr || !renderer->GetLastFrame(rawData, width, height))
+		width = 0;
+}
+
 static void getScreenshot(std::vector<u8>& data, int width = 0)
 {
 	data.clear();
 	std::vector<u8> rawData;
 	int height = 0;
-	if (renderer == nullptr || !renderer->GetLastFrame(rawData, width, height))
+	getScreenshotRaw(rawData, width, height);
+	if (rawData.empty())
 		return;
 	stbi_flip_vertically_on_write(0);
 	stbi_write_png_to_func(appendVectorData, &data, width, height, 3, &rawData[0], 0);
 }
 
+static std::future<void> pendingSavestate;
+static std::atomic<bool> savestateBusy{false};
+static std::atomic<bool> savestateTextureDirty{false};
+
+static void finishPendingSavestate()
+{
+	if (!savestateBusy)
+		return;
+	if (pendingSavestate.wait_for(std::chrono::seconds::zero()) != std::future_status::ready)
+		return;
+	try {
+		pendingSavestate.get();
+	} catch (const std::exception& e) {
+		WARN_LOG(COMMON, "Async savestate failed: %s", e.what());
+	} catch (...) {
+		WARN_LOG(COMMON, "Async savestate failed: unknown error");
+	}
+	savestateBusy = false;
+	if (savestateTextureDirty.exchange(false))
+	{
+		ImguiStateTexture savestatePic;
+		savestatePic.invalidate();
+	}
+}
+
+static void waitForPendingSavestate()
+{
+	if (!savestateBusy)
+		return;
+	if (pendingSavestate.valid())
+	{
+		try {
+			pendingSavestate.wait();
+			pendingSavestate.get();
+		} catch (const std::exception& e) {
+			WARN_LOG(COMMON, "Async savestate failed: %s", e.what());
+		} catch (...) {
+			WARN_LOG(COMMON, "Async savestate failed: unknown error");
+		}
+	}
+	savestateBusy = false;
+	if (savestateTextureDirty.exchange(false))
+	{
+		ImguiStateTexture savestatePic;
+		savestatePic.invalidate();
+	}
+}
+
 static void savestate()
 {
-	// TODO save state async: png compression, savestate file compression/write
-	std::vector<u8> pngData;
-	getScreenshot(pngData, 640);
-	dc_savestate(config::SavestateSlot, pngData.empty() ? nullptr : &pngData[0], pngData.size());
-	ImguiStateTexture savestatePic;
-	savestatePic.invalidate();
+	finishPendingSavestate();
+	if (savestateBusy || !dc_savestateAllowed())
+		return;
+
+	std::vector<u8> stateData;
+	if (!dc_serializeSavestate(stateData) || stateData.empty())
+	{
+		os_notify(T("Save state failed - memory full"), 5000);
+		return;
+	}
+
+	std::vector<u8> rawFrame;
+	int width = 640;
+	int height = 0;
+	getScreenshotRaw(rawFrame, width, height);
+
+	const int slot = config::SavestateSlot;
+	savestateBusy = true;
+	savestateTextureDirty = true;
+	pendingSavestate = std::async(std::launch::async,
+			[stateData = std::move(stateData), rawFrame = std::move(rawFrame), width, height, slot]() {
+		std::vector<u8> pngData;
+		if (!rawFrame.empty() && width > 0 && height > 0)
+		{
+			stbi_flip_vertically_on_write(0);
+			stbi_write_png_to_func(appendVectorData, &pngData, width, height, 3, rawFrame.data(), 0);
+		}
+		dc_writeSavestate(slot, stateData.data(), stateData.size(),
+				pngData.empty() ? nullptr : pngData.data(), pngData.size());
+	});
 }
 
 void cycleSaveStateSlot(int step)
@@ -629,25 +713,30 @@ static void gui_display_commands()
 
 		ImGui::NextColumn();
 		{
+			finishPendingSavestate();
 			DisabledScope _{!dc_savestateAllowed()};
 			ImguiStateTexture savestatePic;
 			time_t savestateDate = dc_getStateCreationDate(config::SavestateSlot);
 
 			// Load State
 			{
-				DisabledScope _{settings.raHardcoreMode || savestateDate == 0};
+				DisabledScope _{settings.raHardcoreMode || savestateDate == 0 || savestateBusy};
 				if (IconButton(ICON_FA_CLOCK_ROTATE_LEFT, T("Load State"), ScaledVec2(buttonWidth, 50)).realize() && dc_savestateAllowed())
 				{
+					waitForPendingSavestate();
 					gui_setState(GuiState::Closed);
 					dc_loadstate(config::SavestateSlot);
 				}
 			}
 
 			// Save State
-			if (IconButton(ICON_FA_DOWNLOAD, T("Save State"), ScaledVec2(buttonWidth, 50)).realize() && dc_savestateAllowed())
 			{
-				gui_setState(GuiState::Closed);
-				savestate();
+				DisabledScope _{savestateBusy};
+				if (IconButton(ICON_FA_DOWNLOAD, T("Save State"), ScaledVec2(buttonWidth, 50)).realize() && dc_savestateAllowed())
+				{
+					gui_setState(GuiState::Closed);
+					savestate();
+				}
 			}
 
 			// Slot #
@@ -662,7 +751,9 @@ static void gui_display_commands()
 				cycleSaveStateSlot(1);
 			{
 				ImVec4 gray(0.75f, 0.75f, 0.75f, 1.f);
-				if (savestateDate == 0)
+				if (savestateBusy)
+					ImGui::TextColored(gray, "%s", T("Saving..."));
+				else if (savestateDate == 0)
 					ImGui::TextColored(gray, "%s", T("Empty"));
 				else
 					ImGui::TextColored(gray, "%s", timeToShortDateTimeString(savestateDate).c_str());
@@ -1306,6 +1397,7 @@ void gui_display_ui()
 {
 	FC_PROFILE_SCOPE;
 	const LockGuard lock(guiMutex);
+	finishPendingSavestate();
 
 	if (gui_state == GuiState::Closed)
 		return;
@@ -1510,6 +1602,7 @@ void gui_cancel_load() {
 
 void gui_term()
 {
+	waitForPendingSavestate();
 	if (inited)
 	{
 		inited = false;
@@ -1554,6 +1647,7 @@ void gui_error(const std::string& what) {
 void gui_loadState(bool inRam)
 {
 	const LockGuard lock(guiMutex);
+	waitForPendingSavestate();
 	if (gui_state == GuiState::Closed && dc_savestateAllowed())
 	{
 		try {
@@ -1572,16 +1666,21 @@ void gui_loadState(bool inRam)
 void gui_saveState(bool stopRestart, bool inRam)
 {
 	const LockGuard lock(guiMutex);
+	finishPendingSavestate();
 	if ((gui_state == GuiState::Closed || !stopRestart) && dc_savestateAllowed())
 	{
 		try {
 			if (stopRestart)
 				emu.stop();
-			
+
 			if (inRam)
 				dc_savestate(-2);
 			else
+			{
 				savestate();
+				if (!stopRestart)
+					waitForPendingSavestate();
+			}
 
 			if (stopRestart)
 				emu.start();

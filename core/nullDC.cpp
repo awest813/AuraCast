@@ -178,50 +178,49 @@ bool dc_savestateAllowed() {
 			&& !settings.naomi.multiboard && !MapleLink::StorageEnabled();
 }
 
-void dc_savestate(int index, const u8 *pngData, u32 pngSize)
+bool dc_serializeSavestate(std::vector<u8>& buffer)
 {
-	if (!dc_savestateAllowed())
-		return;
-
-	lastStateFile.clear();
-
 	Serializer ser;
 	dc_serialize(ser);
-
-	void *data = malloc(ser.size());
-	if (data == nullptr)
+	if (ser.size() == 0)
 	{
-		WARN_LOG(SAVESTATE, "Failed to save state - could not malloc %d bytes", (int)ser.size());
-		os_notify(i18n::T("Save state failed - memory full"), 5000);
-    	return;
+		buffer.clear();
+		return true;
 	}
-
-	ser = Serializer(data, ser.size());
+	buffer.resize(ser.size());
+	ser = Serializer(buffer.data(), buffer.size());
 	dc_serialize(ser);
+	return true;
+}
+
+bool dc_writeSavestate(int index, const u8 *stateData, u32 stateSize, const u8 *pngData, u32 pngSize, bool notify)
+{
+	if (stateData == nullptr || stateSize == 0)
+		return false;
+
+	lastStateFile.clear();
 
 	hostfs::File *f = nullptr;
 	std::string filename = "";
 #ifdef HAS_FMEMOPEN
 	if (index == -2)
 	{
-		// in-ram savestate
 		filename = "RAM";
 		f = new hostfs::StdFile(fmemopen(quicksave_buf, QUICKSAVE_DEFAULT_SIZE, "wb"));
 	}
 	else
 #endif
 	{
-		// regular file savestate
 		filename = hostfs::getSavestatePath(index, true);
 		f = hostfs::storage().openFile(filename.c_str(), "wb");
 	}
-	
+
 	if (f == nullptr)
 	{
 		WARN_LOG(SAVESTATE, "Failed to save state - could not open %s for writing", filename.c_str());
-		os_notify(i18n::T("Cannot open save file"), 5000);
-		free(data);
-    	return;
+		if (notify)
+			os_notify(i18n::T("Cannot open save file"), 5000);
+		return false;
 	}
 
 	RZipFile zipFile;
@@ -234,31 +233,49 @@ void dc_savestate(int index, const u8 *pngData, u32 pngSize)
 		goto fail;
 
 #if 0
-	// Uncompressed savestate
-	f->write(data, 1, ser.size());
+	f->write(stateData, 1, stateSize);
 	delete f;
 #else
 	if (!zipFile.Open(f, true))
 		goto fail;
-	if (zipFile.Write(data, ser.size()) != ser.size())
+	if (zipFile.Write(stateData, stateSize) != stateSize)
 		goto fail;
 	zipFile.Close();
 #endif
 
-	free(data);
-	NOTICE_LOG(SAVESTATE, "Saved state to %s size %d", filename.c_str(), (int)ser.size());
-	os_notify(i18n::T("State saved"), 2000);
-	return;
+	NOTICE_LOG(SAVESTATE, "Saved state to %s size %d", filename.c_str(), (int)stateSize);
+	if (notify)
+		os_notify(i18n::T("State saved"), 2000);
+	return true;
 
 fail:
 	WARN_LOG(SAVESTATE, "Failed to save state - error writing %s", filename.c_str());
-	os_notify(i18n::T("Error saving state"), 5000);
+	if (notify)
+		os_notify(i18n::T("Error saving state"), 5000);
 	if (zipFile.rawFile() != nullptr)
 		zipFile.Close();
 	else
 		delete f;
-	free(data);
-	// delete failed savestate?
+	return false;
+}
+
+void dc_savestate(int index, const u8 *pngData, u32 pngSize)
+{
+	if (!dc_savestateAllowed())
+		return;
+
+	std::vector<u8> stateData;
+	if (!dc_serializeSavestate(stateData))
+		return;
+
+	if (stateData.empty())
+	{
+		WARN_LOG(SAVESTATE, "Failed to save state - empty serialization");
+		os_notify(i18n::T("Save state failed - memory full"), 5000);
+		return;
+	}
+
+	dc_writeSavestate(index, stateData.data(), stateData.size(), pngData, pngSize, true);
 }
 
 void dc_loadstate(int index)
