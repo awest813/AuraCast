@@ -272,7 +272,8 @@ Focus: SH4, memory, disc, audio, PVR—what most DC games stress.
 | 2026-06-04 | **GD-ROM:** `GDCC_GETTOC` HLE, CD sector-type mapping, PIO length check, `invoke_multi_callback()` DMA ordering. See `core/hw/gdrom/README.md`. | v3 redesign, SPI `0x70`, NBA 2K `GET_CMD_STAT`, CUE/CDI/imgread |
 | 2026-06-04 | **SH4 dynarec:** SSA `shop_ifb` versioning; decoder `shop_trapa`/`shop_sleep`/`shop_sync_ssr` + RTE `BET_DynamicIntr` path; `shil_op_clobbers_context()`. | ConstProp gaps, MMU/WinCE, `sh4_cycles` area waits |
 | 2026-06-04 | **PVR:** `getFbWriteAddress()` interlace write-back; modvol outside/inside clip (GLES/DX9/DX11/Vulkan). | OIT modvol tile clip, Vulkan OIT subpass |
-| 2026-06-04 | **AICA:** DSP SRAM write deferred 2 steps (interpreter + x86/x64/ARM/ARM64 JIT). | Volume stacking unverified |
+| 2026-06-04 | **UI polish:** Async savestate audit — 640px preview, PNG encode mutex, corrupt file cleanup, slot lock while saving, consolidated completion handler. | Touch mouse off-screen FIXME |
+| 2026-06-04 | **UI:** Async savestates; virtual gamepad C/Z (Ascii/Pop'n); boxart placeholder in pause menu. | — |
 | — | **Deferred (non-goals):** Naomi ROM parity, iOS, rec_v1 revival. | rec_v2: ARM64/x64 offsets, mainloop, targeted SMC invalidation |
 
 ---
@@ -281,6 +282,7 @@ Focus: SH4, memory, disc, audio, PVR—what most DC games stress.
 
 | Date | Change |
 |------|--------|
+| 2026-06-04 | UI audit polish: async savestate hardening, vgamepad helpers |
 | 2026-06-04 | Audit polish: GD-ROM callback helper cleanup, SH4 `shil_op_clobbers_context`, consolidated audit log |
 | 2026-06-04 | GD-ROM HLE DMA callback ordering; SH4 decoder rte/trapa/sleep canonical ops |
 | 2026-06-04 | Modvol inside clipping (pp_ClipInside) on GLES/DX9/DX11/Vulkan; dynarec DSP MWT deferral |

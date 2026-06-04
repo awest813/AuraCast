@@ -30,6 +30,7 @@
 #include "oslib/http_client.h"
 #include "oslib/i18n.h"
 #include "imgui_driver.h"
+#include "IconsFontAwesome6.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "imgui_stdlib.h"
@@ -472,6 +473,29 @@ static void setUV(float ar, ImVec2& uv0, ImVec2& uv1)
 		uv0.x = -(ar - 1) / 2;
 		uv1.x = 1 + (ar - 1) / 2;
 	}
+}
+
+void ImguiTexture::drawPreview(const ImVec2& size, const char *placeholderIcon)
+{
+	ImTextureID id = getId();
+	if (id != ImTextureID{})
+	{
+		draw(size);
+		return;
+	}
+	ImVec2 drawSize = size;
+	if (drawSize.x <= 0.f)
+		drawSize.x = drawSize.y;
+	if (drawSize.y <= 0.f)
+		drawSize.y = drawSize.x;
+	const ImVec2 pos = ImGui::GetCursorScreenPos();
+	ImGui::Dummy(drawSize);
+	ImDrawList *drawList = ImGui::GetWindowDrawList();
+	drawList->AddRectFilled(pos, pos + drawSize, ImGui::GetColorU32(ImGuiCol_FrameBg));
+	drawList->AddRect(pos, pos + drawSize, ImGui::GetColorU32(ImGuiCol_Border));
+	const char *icon = placeholderIcon != nullptr ? placeholderIcon : ICON_FA_COMPACT_DISC;
+	const ImVec2 iconSize = ImGui::CalcTextSize(icon);
+	drawList->AddText(pos + (drawSize - iconSize) * 0.5f, ImGui::GetColorU32(ImGuiCol_TextDisabled), icon);
 }
 
 void ImguiTexture::draw(const ImVec2& size, const ImVec4& tint_col, const ImVec4& border_col)
