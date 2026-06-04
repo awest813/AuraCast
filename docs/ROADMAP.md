@@ -269,8 +269,10 @@ Focus: SH4, memory, disc, audio, PVR—what most DC games stress.
 
 | Date | Fixed | Still open |
 |------|-------|------------|
-| 2026-06-04 | **GD-ROM:** `GDCC_GETTOC` HLE, CD read sector-type mapping, PIO `<= 0xFFFF` check. See `core/hw/gdrom/README.md`. | v3 redesign, SPI `0x70`, HLE DMA callback hack, CUE/CDI/imgread FIXMEs |
-| 2026-06-04 | **SH4 dynarec:** SSA `shop_ifb` bumps all register versions. | ConstProp gaps, decoder `rte`/`trapa`/`sleep`, MMU/WinCE, `sh4_cycles` area waits |
+| 2026-06-04 | **GD-ROM:** `GDCC_GETTOC` HLE, CD read sector-type mapping, PIO `<= 0xFFFF` check. See `core/hw/gdrom/README.md`. | v3 redesign, SPI `0x70`, CUE/CDI/imgread FIXMEs |
+| 2026-06-04 | **SH4 dynarec:** SSA `shop_ifb` bumps all register versions. | ConstProp gaps, MMU/WinCE, `sh4_cycles` area waits |
+| 2026-06-04 | **GD-ROM HLE:** DMA callback via `invoke_dma_callback()` (transfer end or `G1_DMA_END`, either order). | v3 redesign, SPI `0x70`, CUE/CDI/imgread FIXMEs |
+| 2026-06-04 | **SH4 decoder:** `shop_trapa`/`shop_sleep`/`shop_sync_ssr`; RTE delay slot + `BET_DynamicIntr` SR sync. | ConstProp gaps, MMU/WinCE, `sh4_cycles` area waits |
 | 2026-06-04 | **PVR:** `getFbWriteAddress()` interlace write-back; modvol **outside** clip (GLES/DX9); modvol **inside** clip via `pp_ClipInside` (GLES/DX9/DX11/Vulkan). | OIT modvol tile clip, Vulkan OIT subpass |
 | 2026-06-04 | **AICA:** DSP SRAM write deferred 2 steps in interpreter and all dynarec backends (x86/x64/ARM/ARM64). | Volume stacking unverified (Neil Corlett notes) |
 | — | **Deferred (non-goals):** Naomi ROM parity, iOS, rec_v1 revival. | rec_v2: ARM64/x64 offsets, mainloop, targeted SMC invalidation |
@@ -281,6 +283,7 @@ Focus: SH4, memory, disc, audio, PVR—what most DC games stress.
 
 | Date | Change |
 |------|--------|
+| 2026-06-04 | GD-ROM HLE DMA callback ordering; SH4 decoder rte/trapa/sleep canonical ops |
 | 2026-06-04 | Modvol inside clipping (pp_ClipInside) on GLES/DX9/DX11/Vulkan; dynarec DSP MWT deferral |
 | 2026-06-04 | Incremental audit log added; documents first roadmap fix pass |
 | 2026-06-04 | Initial unified roadmap from in-repo sources and core TODO audit |

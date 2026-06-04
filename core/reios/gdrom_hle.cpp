@@ -24,6 +24,15 @@
 #define debugf(...) DEBUG_LOG(REIOS, __VA_ARGS__)
 static void readSectors(u32 addr, u32 sector, u32 count, bool virtualAddr);
 
+static void invoke_dma_callback()
+{
+	if (gd_hle_state.multi_callback == 0)
+		return;
+	Sh4cntx.r[4] = gd_hle_state.multi_callback_arg;
+	Sh4cntx.pc = gd_hle_state.multi_callback;
+	gd_hle_state.dma_trans_ended = false;
+}
+
 struct gdrom_hle_state_t
 {
 	gdrom_hle_state_t() : params{}, result{} {}
@@ -377,6 +386,7 @@ static void multi_xfer()
 		if (gd_hle_state.multi_read_count == 0)
 			gd_hle_state.status = GDC_COMPLETE;
 		asic_RaiseInterrupt(holly_GDROM_DMA);
+		invoke_dma_callback();
 	}
 }
 
@@ -881,12 +891,8 @@ void gdrom_hle_op()
 			gd_hle_state.multi_callback = r[4];
 			gd_hle_state.multi_callback_arg = r[5];
 			r[0] = GDC_OK;
-			if (gd_hle_state.multi_callback != 0 && gd_hle_state.dma_trans_ended)	// FIXME hack for 2K sports games
-			{
-				r[4] = gd_hle_state.multi_callback_arg;
-				Sh4cntx.pc = gd_hle_state.multi_callback;
-				gd_hle_state.dma_trans_ended = false;
-			}
+			if (gd_hle_state.dma_trans_ended)
+				invoke_dma_callback();
 			asic_CancelInterrupt(holly_GDROM_DMA);
 			break;
 

@@ -22,6 +22,8 @@
 	#define shil_compile(code)
 #elif  SHIL_MODE==1
 #include "hw/sh4/sh4_interrupts.h"
+#include "hw/sh4/sh4_core.h"
+#include "hw/sh4/sh4_mmr.h"
 	//generate structs ...
 	#define SHIL_START
 	#define SHIL_END
@@ -210,6 +212,18 @@ shil_canonical
 (
 void, f1, (),
 	UpdateSR();
+)
+shil_compile
+(
+	shil_cf(f1);
+)
+shil_opc_end()
+
+shil_opc(sync_ssr)
+shil_canonical
+(
+void, f1, (),
+	Sh4cntx.sr.setFull(Sh4cntx.ssr);
 )
 shil_compile
 (
@@ -1067,6 +1081,47 @@ shil_compile
 (
 	shil_cf_arg_u32(rs2);
 	shil_cf_arg_u32(rs1);
+	shil_cf(f1);
+)
+shil_opc_end()
+
+// shop_trapa: raise trap exception
+shil_opc(trapa)
+shil_canonical
+(
+void,f1,(u32 tra, u32 epc),
+	CCN_TRA = tra;
+	Do_Exception(epc, Sh4Ex_Trap);
+)
+shil_compile
+(
+	shil_cf_arg_u32(rs1);
+	shil_cf_arg_u32(rs2);
+	shil_cf(f1);
+)
+shil_opc_end()
+
+// shop_sleep: wait for interrupt or retry
+shil_opc(sleep)
+shil_canonical
+(
+void,f1,(Sh4Context *ctx),
+	int i = 0;
+	int s = 1;
+	while (!UpdateSystem_INTC())
+	{
+		if (i++ > 1000)
+		{
+			s = 0;
+			break;
+		}
+	}
+	if (s == 0)
+		ctx->pc -= 2;
+)
+shil_compile
+(
+	shil_cf_arg_sh4ctx();
 	shil_cf(f1);
 )
 shil_opc_end()

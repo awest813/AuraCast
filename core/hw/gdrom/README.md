@@ -8,7 +8,7 @@
 - **Technical approach is wrong** — the v3 state machine in `gdromv3.cpp` is
   acknowledged as structurally incorrect; a redesign is tracked in
   `docs/ROADMAP.md` Phase 1.2, not a FIXME-only pass.
-- **Secondary features incomplete** — SPI `0x70` mount/auth, HLE DMA callback
+- **Secondary features incomplete** — SPI `0x70` mount/auth
   sequencing (`gdrom_hle.cpp`), multi-track CUE FAD math, and imgread sector
   conversion remain open.
 
@@ -21,6 +21,6 @@
 | PIO buffer length check | Fixed — `verify(len <= 0xFFFF)` |
 | DMA vs PIO routing | Already handled via `Features.CDRead.DMA`; sector type now shared |
 | SPI `0x70` status/interrupt | **Open** — needs hardware validation |
-| HLE 2K sports DMA callback hack | **Open** — needs proper GDC completion ordering |
+| HLE 2K sports DMA callback hack | **Fixed** — `invoke_dma_callback()` on DMA complete and `G1_DMA_END`, either order |
 | imgread CUE mixed sector sizes / CDI seek | **Open** |
 | v3 architectural redesign | **Deferred** — strategic refactor |

@@ -63,7 +63,7 @@ public:
 		{
 			FlushAllRegs(false);
 		}
-		else if (op->op == shop_sync_sr)
+		else if (op->op == shop_sync_sr || op->op == shop_sync_ssr)
 		{
 			//FlushReg(reg_sr_T, true);
 			FlushReg(reg_sr_status, true);
@@ -418,7 +418,7 @@ private:
 			// TODO we could look at the ifb op to optimize what to flush
 			if (op->op == shop_ifb || (mmu_enabled() && (op->op == shop_readm || op->op == shop_writem || op->op == shop_pref)))
 				return true;
-			if (op->op == shop_sync_sr && (/*reg == reg_sr_T ||*/ reg == reg_sr_status || (reg >= reg_r0 && reg <= reg_r7)
+			if ((op->op == shop_sync_sr || op->op == shop_sync_ssr) && (/*reg == reg_sr_T ||*/ reg == reg_sr_status || (reg >= reg_r0 && reg <= reg_r7)
 					|| (reg >= reg_r0_Bank && reg <= reg_r7_Bank)))
 				return true;
 			if (op->op == shop_sync_fpscr && (reg == reg_fpscr || reg == reg_old_fpscr || (reg >= reg_fr_0 && reg <= reg_xf_15)))
@@ -620,7 +620,7 @@ private:
 	{
 		shil_opcode* op = &block->oplist[cur_op];
 		shil_opcode* next_op = &block->oplist[early_op];
-		if (next_op->op == shop_ifb || next_op->op == shop_sync_sr || next_op->op == shop_sync_fpscr)
+		if (next_op->op == shop_ifb || next_op->op == shop_sync_sr || next_op->op == shop_sync_ssr || next_op->op == shop_sync_fpscr)
 			return false;
 		if (next_op->rs1.is_r32() && !DefsReg(cur_op, early_op - 1, next_op->rs1._reg))
 		{

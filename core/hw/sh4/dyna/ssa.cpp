@@ -445,7 +445,7 @@ void SSAOptimizer::ConstPropPass()
 		{
 			constprop_values.clear();
 		}
-		else if (op.op == shop_sync_sr)
+		else if (op.op == shop_sync_sr || op.op == shop_sync_ssr)
 		{
 			for (auto it = constprop_values.begin(); it != constprop_values.end(); )
 			{
@@ -616,7 +616,7 @@ void SSAOptimizer::DeadCodeRemovalPass()
 				continue;
 			}
 		}
-		if (op.op == shop_sync_sr)
+		if (op.op == shop_sync_sr || op.op == shop_sync_ssr)
 		{
 			last_versions[reg_sr_T] = -1;
 			last_versions[reg_sr_status] = -1;

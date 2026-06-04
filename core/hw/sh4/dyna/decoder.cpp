@@ -191,25 +191,23 @@ sh4dec(i0000_0000_0000_1011)
 //rte
 sh4dec(i0000_0000_0010_1011)
 {
-	//TODO: Write SR, Check intr
 	dec_write_sr(reg_ssr);
 	Emit(shop_sync_sr);
 	dec_DynamicSet(reg_spc);
+	state.rte_pending = true;
 	dec_End(NullAddress, BET_DynamicIntr, true);
 }
 //trapa #<imm>
 sh4dec(i1100_0011_iiii_iiii)
 {
-	//TODO: ifb
-	dec_fallback(op);
+	Emit(shop_trapa, mk_imm(GetImm8(op) << 2), mk_imm(state.cpu.rpc + 2));
 	dec_DynamicSet(reg_nextpc);
 	dec_End(NullAddress, BET_DynamicJump, false);
 }
 //sleep
 sh4dec(i0000_0000_0001_1011)
 {
-	//TODO: ifb
-	dec_fallback(op);
+	Emit(shop_sleep);
 	dec_DynamicSet(reg_nextpc);
 	dec_End(NullAddress, BET_DynamicJump, false);
 }
@@ -944,6 +942,7 @@ static void state_Setup(u32 rpc,fpscr_t fpu_cfg)
 	state.info.has_readm=false;
 	state.info.has_writem=false;
 	state.info.has_fpu=false;
+	state.rte_pending = false;
 }
 
 void dec_updateBlockCycles(RuntimeBlockInfo *block, u16 op)
@@ -966,6 +965,11 @@ bool dec_DecodeBlock(RuntimeBlockInfo* rbi,u32 max_cycles)
 		switch(state.NextOp)
 		{
 		case NDO_Delayslot:
+			if (state.rte_pending)
+			{
+				Emit(shop_sync_ssr);
+				state.rte_pending = false;
+			}
 			state.NextOp=state.DelayOp;
 			state.cpu.is_delayslot=true;
 			//there is no break here by design
@@ -1023,6 +1027,8 @@ bool dec_DecodeBlock(RuntimeBlockInfo* rbi,u32 max_cycles)
 			break;
 
 		case NDO_End:
+			if (state.BlockType == BET_DynamicIntr)
+				Emit(shop_sync_sr);
 			// Disabled for now since we need to know if the block is read-only,
 			// which isn't determined until after the decoding.
 			// This is a relatively rare optimization anyway
