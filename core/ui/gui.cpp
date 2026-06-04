@@ -295,6 +295,9 @@ void gui_set_mouse_button(int button, bool pressed, bool touchscreen)
 	else
 		mouseButtons &= ~(1 << button);
 	mouseTouchscreen = touchscreen;
+	// Hide the touch cursor when all buttons are released so ImGui doesn't keep hover/tooltips.
+	if (touchscreen && !pressed && mouseButtons == 0)
+		gui_set_mouse_position(-1, -1, true);
 }
 
 void gui_set_mouse_wheel(float delta) {
@@ -427,7 +430,7 @@ void gui_open_settings()
 	{
 		vgamepad::pauseEditing();
 		// iOS: force a touch up event to make up for the one eaten by the tap gesture recognizer
-		mouseButtons &= ~1;
+		gui_set_mouse_button(0, false, true);
 		gui_setState(GuiState::VJoyEditCommands);
 	}
 	else if (gui_state == GuiState::Loading)
@@ -1221,6 +1224,12 @@ static void drawBoxartBackground()
 	game.path = settings.content.path;
 	game.fileName = settings.content.fileName;
 	GameBoxart art = boxart.getBoxart(game);
+	if (art.boxartPath.empty())
+		return;
+	// Only use art already in the texture cache; don't load or show a placeholder here.
+	ImTextureID id = imguiDriver->getTexture(art.boxartPath);
+	if (id == ImTextureID{})
+		return;
 	ImguiFileTexture tex(art.boxartPath);
 	ImDrawList *dl = ImGui::GetBackgroundDrawList();
 	tex.draw(dl, ImVec2(0, 0), ImVec2(settings.display.width, settings.display.height), 1.f);
