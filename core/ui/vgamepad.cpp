@@ -707,6 +707,11 @@ static void disableControl(ControlId ctrlId)
 	}
 }
 
+static void enableControl(ControlId ctrlId)
+{
+	Controls[ctrlId].disabled = false;
+}
+
 void startGame()
 {
 	enableAllControls();
@@ -733,8 +738,8 @@ void startGame()
 			disableControl(Y);
 			break;
 		case MDT_AsciiStick:
-			Controls[Btn4].disabled = false;
-			Controls[Btn5].disabled = false;
+			enableControl(Btn4);
+			enableControl(Btn5);
 			buttonMap[Btn4] = DC_BTN_C;
 			buttonMap[Btn5] = DC_BTN_Z;
 			disableControl(AnalogArea);
@@ -742,7 +747,7 @@ void startGame()
 			disableControl(RightTrigger);
 			break;
 		case MDT_PopnMusicController:
-			Controls[Btn4].disabled = false;
+			enableControl(Btn4);
 			buttonMap[Btn4] = DC_BTN_C;
 			disableControl(AnalogArea);
 			disableControl(LeftTrigger);

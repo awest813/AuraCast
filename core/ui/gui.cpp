@@ -495,7 +495,21 @@ static void getScreenshotRaw(std::vector<u8>& rawData, int& width, int& height)
 	rawData.clear();
 	height = 0;
 	if (renderer == nullptr || !renderer->GetLastFrame(rawData, width, height))
+	{
+		rawData.clear();
 		width = 0;
+	}
+}
+
+static std::mutex pngEncodeMutex;
+
+static bool encodeScreenshotPng(const std::vector<u8>& rawFrame, int width, int height, std::vector<u8>& pngData)
+{
+	if (rawFrame.empty() || width <= 0 || height <= 0)
+		return false;
+	std::lock_guard<std::mutex> _(pngEncodeMutex);
+	stbi_flip_vertically_on_write(0);
+	return stbi_write_png_to_func(appendVectorData, &pngData, width, height, 3, rawFrame.data(), 0) != 0;
 }
 
 static void getScreenshot(std::vector<u8>& data, int width = 0)
@@ -506,56 +520,71 @@ static void getScreenshot(std::vector<u8>& data, int width = 0)
 	getScreenshotRaw(rawData, width, height);
 	if (rawData.empty())
 		return;
-	stbi_flip_vertically_on_write(0);
-	stbi_write_png_to_func(appendVectorData, &data, width, height, 3, &rawData[0], 0);
+	encodeScreenshotPng(rawData, width, height, data);
 }
 
-static std::future<void> pendingSavestate;
+static std::future<bool> pendingSavestate;
 static std::atomic<bool> savestateBusy{false};
 static std::atomic<bool> savestateTextureDirty{false};
 
-static void finishPendingSavestate()
+static bool completePendingSavestate(bool wait)
 {
 	if (!savestateBusy)
-		return;
-	if (pendingSavestate.wait_for(std::chrono::seconds::zero()) != std::future_status::ready)
-		return;
-	try {
-		pendingSavestate.get();
-	} catch (const std::exception& e) {
-		WARN_LOG(COMMON, "Async savestate failed: %s", e.what());
-	} catch (...) {
-		WARN_LOG(COMMON, "Async savestate failed: unknown error");
+		return true;
+
+	bool success = true;
+	if (wait)
+	{
+		if (pendingSavestate.valid())
+		{
+			try {
+				success = pendingSavestate.get();
+			} catch (const std::exception& e) {
+				WARN_LOG(COMMON, "Async savestate failed: %s", e.what());
+				success = false;
+			} catch (...) {
+				WARN_LOG(COMMON, "Async savestate failed: unknown error");
+				success = false;
+			}
+		}
 	}
+	else if (pendingSavestate.wait_for(std::chrono::seconds::zero()) == std::future_status::ready)
+	{
+		try {
+			success = pendingSavestate.get();
+		} catch (const std::exception& e) {
+			WARN_LOG(COMMON, "Async savestate failed: %s", e.what());
+			success = false;
+		} catch (...) {
+			WARN_LOG(COMMON, "Async savestate failed: unknown error");
+			success = false;
+		}
+	}
+	else
+	{
+		return true;
+	}
+
 	savestateBusy = false;
-	if (savestateTextureDirty.exchange(false))
+	if (success && savestateTextureDirty.exchange(false))
 	{
 		ImguiStateTexture savestatePic;
 		savestatePic.invalidate();
 	}
+	else
+		savestateTextureDirty = false;
+
+	return success;
+}
+
+static void finishPendingSavestate()
+{
+	completePendingSavestate(false);
 }
 
 static void waitForPendingSavestate()
 {
-	if (!savestateBusy)
-		return;
-	if (pendingSavestate.valid())
-	{
-		try {
-			pendingSavestate.wait();
-			pendingSavestate.get();
-		} catch (const std::exception& e) {
-			WARN_LOG(COMMON, "Async savestate failed: %s", e.what());
-		} catch (...) {
-			WARN_LOG(COMMON, "Async savestate failed: unknown error");
-		}
-	}
-	savestateBusy = false;
-	if (savestateTextureDirty.exchange(false))
-	{
-		ImguiStateTexture savestatePic;
-		savestatePic.invalidate();
-	}
+	completePendingSavestate(true);
 }
 
 static void savestate()
@@ -567,7 +596,7 @@ static void savestate()
 	std::vector<u8> stateData;
 	if (!dc_serializeSavestate(stateData) || stateData.empty())
 	{
-		os_notify(T("Save state failed - memory full"), 5000);
+		os_notify(T("Save state failed"), 5000);
 		return;
 	}
 
@@ -582,12 +611,8 @@ static void savestate()
 	pendingSavestate = std::async(std::launch::async,
 			[stateData = std::move(stateData), rawFrame = std::move(rawFrame), width, height, slot]() {
 		std::vector<u8> pngData;
-		if (!rawFrame.empty() && width > 0 && height > 0)
-		{
-			stbi_flip_vertically_on_write(0);
-			stbi_write_png_to_func(appendVectorData, &pngData, width, height, 3, rawFrame.data(), 0);
-		}
-		dc_writeSavestate(slot, stateData.data(), stateData.size(),
+		encodeScreenshotPng(rawFrame, width, height, pngData);
+		return dc_writeSavestate(slot, stateData.data(), stateData.size(),
 				pngData.empty() ? nullptr : pngData.data(), pngData.size());
 	});
 }
@@ -740,15 +765,18 @@ static void gui_display_commands()
 			}
 
 			// Slot #
-			if (ImGui::ArrowButton("##prev-slot", ImGuiDir_Left))
-				cycleSaveStateSlot(-1);
-			std::string slot = strprintf(T("Slot %d"), (int)config::SavestateSlot + 1);
-			float spacingW = (uiScaled(buttonWidth) - ImGui::GetFrameHeight() * 2 - ImGui::CalcTextSize(slot.c_str()).x) / 2;
-			ImGui::SameLine(0, spacingW);
-			ImGui::Text("%s", slot.c_str());
-			ImGui::SameLine(0, spacingW);
-			if (ImGui::ArrowButton("##next-slot", ImGuiDir_Right))
-				cycleSaveStateSlot(1);
+			{
+				DisabledScope _{savestateBusy};
+				if (ImGui::ArrowButton("##prev-slot", ImGuiDir_Left))
+					cycleSaveStateSlot(-1);
+				std::string slot = strprintf(T("Slot %d"), (int)config::SavestateSlot + 1);
+				float spacingW = (uiScaled(buttonWidth) - ImGui::GetFrameHeight() * 2 - ImGui::CalcTextSize(slot.c_str()).x) / 2;
+				ImGui::SameLine(0, spacingW);
+				ImGui::Text("%s", slot.c_str());
+				ImGui::SameLine(0, spacingW);
+				if (ImGui::ArrowButton("##next-slot", ImGuiDir_Right))
+					cycleSaveStateSlot(1);
+			}
 			{
 				ImVec4 gray(0.75f, 0.75f, 0.75f, 1.f);
 				if (savestateBusy)

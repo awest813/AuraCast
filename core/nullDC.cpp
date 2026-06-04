@@ -180,17 +180,23 @@ bool dc_savestateAllowed() {
 
 bool dc_serializeSavestate(std::vector<u8>& buffer)
 {
-	Serializer ser;
-	dc_serialize(ser);
-	if (ser.size() == 0)
-	{
-		buffer.clear();
+	try {
+		Serializer ser;
+		dc_serialize(ser);
+		if (ser.size() == 0)
+		{
+			buffer.clear();
+			return true;
+		}
+		buffer.resize(ser.size());
+		ser = Serializer(buffer.data(), buffer.size());
+		dc_serialize(ser);
 		return true;
+	} catch (const std::exception& e) {
+		WARN_LOG(SAVESTATE, "Failed to serialize savestate: %s", e.what());
+		buffer.clear();
+		return false;
 	}
-	buffer.resize(ser.size());
-	ser = Serializer(buffer.data(), buffer.size());
-	dc_serialize(ser);
-	return true;
 }
 
 bool dc_writeSavestate(int index, const u8 *stateData, u32 stateSize, const u8 *pngData, u32 pngSize, bool notify)
@@ -254,8 +260,14 @@ fail:
 		os_notify(i18n::T("Error saving state"), 5000);
 	if (zipFile.rawFile() != nullptr)
 		zipFile.Close();
-	else
+	else if (f != nullptr)
 		delete f;
+#if defined(HAS_FMEMOPEN)
+	if (index != -2)
+#else
+	if (true)
+#endif
+		nowide::remove(filename.c_str());
 	return false;
 }
 
