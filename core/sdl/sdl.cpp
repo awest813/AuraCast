@@ -587,7 +587,6 @@ void input_sdl_handle()
 					auto mouse = getMouse(0);
 					int x = event.tfinger.x * settings.display.width;
 					int y = event.tfinger.y * settings.display.height;
-					gui_set_mouse_position(x, y, true);
 					gui_set_mouse_button(0, false, true);
 					mouse->setAbsPos(x, y);
 					mouse->setButton(Mouse::LEFT_BUTTON, false);

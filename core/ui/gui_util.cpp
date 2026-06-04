@@ -436,12 +436,7 @@ void windowDragScroll()
 			computeScrollSpeed(window->ScrollSpeed.x);
 			computeScrollSpeed(window->ScrollSpeed.y);
 			if (window->ScrollSpeed == ImVec2())
-			{
 				window->DragScrolling = false;
-				// FIXME we should really move the mouse off-screen after a touch up and this wouldn't be necessary
-				// the only problem is tool tips
-				gui_set_mouse_position(-1, -1, true);
-			}
 		}
 		else
 		{

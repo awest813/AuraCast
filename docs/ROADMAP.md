@@ -272,8 +272,8 @@ Focus: SH4, memory, disc, audio, PVR—what most DC games stress.
 | 2026-06-04 | **GD-ROM:** `GDCC_GETTOC` HLE, CD sector-type mapping, PIO length check, `invoke_multi_callback()` DMA ordering. See `core/hw/gdrom/README.md`. | v3 redesign, SPI `0x70`, NBA 2K `GET_CMD_STAT`, CUE/CDI/imgread |
 | 2026-06-04 | **SH4 dynarec:** SSA `shop_ifb` versioning; decoder `shop_trapa`/`shop_sleep`/`shop_sync_ssr` + RTE `BET_DynamicIntr` path; `shil_op_clobbers_context()`. | ConstProp gaps, MMU/WinCE, `sh4_cycles` area waits |
 | 2026-06-04 | **PVR:** `getFbWriteAddress()` interlace write-back; modvol outside/inside clip (GLES/DX9/DX11/Vulkan). | OIT modvol tile clip, Vulkan OIT subpass |
-| 2026-06-04 | **UI polish:** Async savestate audit — 640px preview, PNG encode mutex, corrupt file cleanup, slot lock while saving, consolidated completion handler. | Touch mouse off-screen FIXME |
-| 2026-06-04 | **UI:** Async savestates; virtual gamepad C/Z (Ascii/Pop'n); boxart placeholder in pause menu. | — |
+| 2026-06-04 | **UI polish:** Async savestate audit — 640px preview, PNG encode mutex, corrupt file cleanup, slot lock while saving, consolidated completion handler. | — |
+| 2026-06-04 | **UI:** Touch cursor hidden on finger release; fullscreen boxart only when cached; async savestates; virtual gamepad C/Z; pause-menu boxart placeholder. | — |
 | — | **Deferred (non-goals):** Naomi ROM parity, iOS, rec_v1 revival. | rec_v2: ARM64/x64 offsets, mainloop, targeted SMC invalidation |
 
 ---
