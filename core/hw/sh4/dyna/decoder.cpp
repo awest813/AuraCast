@@ -194,7 +194,6 @@ sh4dec(i0000_0000_0010_1011)
 	dec_write_sr(reg_ssr);
 	Emit(shop_sync_sr);
 	dec_DynamicSet(reg_spc);
-	state.rte_pending = true;
 	dec_End(NullAddress, BET_DynamicIntr, true);
 }
 //trapa #<imm>
@@ -942,7 +941,6 @@ static void state_Setup(u32 rpc,fpscr_t fpu_cfg)
 	state.info.has_readm=false;
 	state.info.has_writem=false;
 	state.info.has_fpu=false;
-	state.rte_pending = false;
 }
 
 void dec_updateBlockCycles(RuntimeBlockInfo *block, u16 op)
@@ -965,11 +963,8 @@ bool dec_DecodeBlock(RuntimeBlockInfo* rbi,u32 max_cycles)
 		switch(state.NextOp)
 		{
 		case NDO_Delayslot:
-			if (state.rte_pending)
-			{
+			if (state.BlockType == BET_DynamicIntr)
 				Emit(shop_sync_ssr);
-				state.rte_pending = false;
-			}
 			state.NextOp=state.DelayOp;
 			state.cpu.is_delayslot=true;
 			//there is no break here by design

@@ -55,7 +55,7 @@ public:
 	void OpBegin(shil_opcode* op, int opid)
 	{
 		opnum = opid;
-		if (op->op == shop_ifb)
+		if (shil_op_clobbers_context(op->op))
 		{
 			FlushAllRegs(true);
 		}
@@ -95,7 +95,7 @@ public:
 			for (u32 i = 0; i < op->rs3.count(); i++)
 				FlushReg((Sh4RegType)(op->rs3._reg + i), false);
 		}
-		if (op->op != shop_ifb)
+		if (!shil_op_clobbers_context(op->op))
 		{
 			AllocSourceReg(op->rs1);
 			AllocSourceReg(op->rs2);
@@ -620,7 +620,7 @@ private:
 	{
 		shil_opcode* op = &block->oplist[cur_op];
 		shil_opcode* next_op = &block->oplist[early_op];
-		if (next_op->op == shop_ifb || next_op->op == shop_sync_sr || next_op->op == shop_sync_ssr || next_op->op == shop_sync_fpscr)
+		if (shil_op_clobbers_context(next_op->op) || next_op->op == shop_sync_sr || next_op->op == shop_sync_ssr || next_op->op == shop_sync_fpscr)
 			return false;
 		if (next_op->rs1.is_r32() && !DefsReg(cur_op, early_op - 1, next_op->rs1._reg))
 		{

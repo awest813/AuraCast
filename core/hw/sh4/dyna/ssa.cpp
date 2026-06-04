@@ -67,7 +67,7 @@ void SSAOptimizer::AddVersionPass()
 
 	for (shil_opcode& op : block->oplist)
 	{
-		if (op.op == shop_ifb)
+		if (shil_op_clobbers_context(op.op))
 		{
 			for (u32 i = 0; i < sh4_reg_count; i++)
 				reg_versions[i]++;
@@ -441,7 +441,7 @@ void SSAOptimizer::ConstPropPass()
 		if (op.op != shop_fmac && op.op != shop_adc)
 			ConstPropOperand(op.rs3);
 
-		if (op.op == shop_ifb)
+		if (shil_op_clobbers_context(op.op))
 		{
 			constprop_values.clear();
 		}
@@ -599,7 +599,7 @@ void SSAOptimizer::DeadCodeRemovalPass()
 		shil_opcode& op = block->oplist[opnum];
 		bool dead_code = false;
 
-		if (op.op == shop_ifb || (mmu_enabled() && (op.op == shop_readm || op.op == shop_writem)))
+		if (shil_op_clobbers_context(op.op) || (mmu_enabled() && (op.op == shop_readm || op.op == shop_writem)))
 		{
 			// if mmu enabled, mem accesses can throw an exception
 			// so last_versions must be reset so the regs are correctly saved beforehand
@@ -842,7 +842,7 @@ void SSAOptimizer::DeadRegisterPass()
 					aliasdef = opnum;
 				else if (DefinesHigherVersion(op->rd2, alias.second))
 					aliasdef = opnum;
-				else if (op->op == shop_ifb)
+				else if (shil_op_clobbers_context(op->op))
 					aliasdef = opnum;
 			}
 

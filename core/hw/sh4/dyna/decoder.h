@@ -63,8 +63,6 @@ struct state_t
 		bool has_writem;
 		bool has_fpu;
 	} info;
-
-	bool rte_pending;
 };
 
 const u32 NullAddress = 0xFFFFFFFF;

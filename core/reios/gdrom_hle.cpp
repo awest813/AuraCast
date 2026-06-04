@@ -24,15 +24,6 @@
 #define debugf(...) DEBUG_LOG(REIOS, __VA_ARGS__)
 static void readSectors(u32 addr, u32 sector, u32 count, bool virtualAddr);
 
-static void invoke_dma_callback()
-{
-	if (gd_hle_state.multi_callback == 0)
-		return;
-	Sh4cntx.r[4] = gd_hle_state.multi_callback_arg;
-	Sh4cntx.pc = gd_hle_state.multi_callback;
-	gd_hle_state.dma_trans_ended = false;
-}
-
 struct gdrom_hle_state_t
 {
 	gdrom_hle_state_t() : params{}, result{} {}
@@ -92,6 +83,17 @@ struct gdrom_hle_state_t
 	}
 };
 static gdrom_hle_state_t gd_hle_state;
+
+// Jump to the registered multi-read callback (PIO or DMA). Clears dma_trans_ended
+// when invoked so G1_DMA_END does not fire twice after a completed DMA transfer.
+static void invoke_multi_callback()
+{
+	if (gd_hle_state.multi_callback == 0)
+		return;
+	Sh4cntx.r[4] = gd_hle_state.multi_callback_arg;
+	Sh4cntx.pc = gd_hle_state.multi_callback;
+	gd_hle_state.dma_trans_ended = false;
+}
 
 static int schedId = -1;
 
@@ -372,11 +374,7 @@ static void multi_xfer()
 	{
 		gd_hle_state.result[2] = gd_hle_state.multi_read_total - gd_hle_state.multi_read_count;
 		gd_hle_state.result[3] = GDC_WAIT_INTERNAL;
-		if (gd_hle_state.multi_callback != 0)
-		{
-			Sh4cntx.r[4] = gd_hle_state.multi_callback_arg;
-			Sh4cntx.pc = gd_hle_state.multi_callback;
-		}
+		invoke_multi_callback();
 	}
 	else
 	{
@@ -386,7 +384,7 @@ static void multi_xfer()
 		if (gd_hle_state.multi_read_count == 0)
 			gd_hle_state.status = GDC_COMPLETE;
 		asic_RaiseInterrupt(holly_GDROM_DMA);
-		invoke_dma_callback();
+		invoke_multi_callback();
 	}
 }
 
@@ -760,7 +758,7 @@ void gdrom_hle_op()
 					r[0] = GDC_BUSY;	// Bust-a-move 4 likes this
 				else
 					r[0] = gd_hle_state.status;	// completed or error
-				// Fixes NBA 2K
+				// NBA 2K: treat exhausted multi-read as complete (GDC_CONTINUE + count 0)
 				if (gd_hle_state.status == GDC_CONTINUE && gd_hle_state.multi_read_count == 0)
 				{
 					gd_hle_state.status = GDC_COMPLETE;
@@ -892,7 +890,7 @@ void gdrom_hle_op()
 			gd_hle_state.multi_callback_arg = r[5];
 			r[0] = GDC_OK;
 			if (gd_hle_state.dma_trans_ended)
-				invoke_dma_callback();
+				invoke_multi_callback();
 			asic_CancelInterrupt(holly_GDROM_DMA);
 			break;
 

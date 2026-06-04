@@ -21,6 +21,7 @@
 | PIO buffer length check | Fixed — `verify(len <= 0xFFFF)` |
 | DMA vs PIO routing | Already handled via `Features.CDRead.DMA`; sector type now shared |
 | SPI `0x70` status/interrupt | **Open** — needs hardware validation |
-| HLE 2K sports DMA callback hack | **Fixed** — `invoke_dma_callback()` on DMA complete and `G1_DMA_END`, either order |
+| HLE multi-read DMA callback | **Fixed** — `invoke_multi_callback()` on transfer end and `G1_DMA_END`, either order |
+| HLE `GET_CMD_STAT` NBA 2K workaround | **Open** — `GDC_CONTINUE` + zero count promoted to `GDC_COMPLETE` |
 | imgread CUE mixed sector sizes / CDI seek | **Open** |
 | v3 architectural redesign | **Deferred** — strategic refactor |
