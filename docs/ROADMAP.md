@@ -272,7 +272,7 @@ Focus: SH4, memory, disc, audio, PVR—what most DC games stress.
 | 2026-06-04 | **GD-ROM:** `GDCC_GETTOC` HLE, CD sector-type mapping, PIO length check, `invoke_multi_callback()` DMA ordering. See `core/hw/gdrom/README.md`. | v3 redesign, SPI `0x70`, NBA 2K `GET_CMD_STAT`, CUE/CDI/imgread |
 | 2026-06-04 | **SH4 dynarec:** SSA `shop_ifb` versioning; decoder `shop_trapa`/`shop_sleep`/`shop_sync_ssr` + RTE `BET_DynamicIntr` path; `shil_op_clobbers_context()`. | ConstProp gaps, MMU/WinCE, `sh4_cycles` area waits |
 | 2026-06-04 | **PVR:** `getFbWriteAddress()` interlace write-back; modvol outside/inside clip (GLES/DX9/DX11/Vulkan). | OIT modvol tile clip, Vulkan OIT subpass |
-| 2026-06-04 | **AICA:** DSP SRAM write deferred 2 steps (interpreter + x86/x64/ARM/ARM64 JIT). | Volume stacking unverified |
+| 2026-06-04 | **UI:** Virtual gamepad C/Z buttons for Ascii Stick and Pop'n Music controllers; boxart placeholder in pause menu. | Async savestate, touch mouse off-screen FIXME |
 | — | **Deferred (non-goals):** Naomi ROM parity, iOS, rec_v1 revival. | rec_v2: ARM64/x64 offsets, mainloop, targeted SMC invalidation |
 
 ---

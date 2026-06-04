@@ -711,6 +711,8 @@ void startGame()
 {
 	enableAllControls();
 	serviceMode = false;
+	buttonMap[Btn4] = DC_BTN_Y;
+	buttonMap[Btn5] = DC_BTN_Z;
 	setButtonMap();
 	bool enableTouchMouse = false;
 	if (settings.platform.isConsole())
@@ -731,13 +733,17 @@ void startGame()
 			disableControl(Y);
 			break;
 		case MDT_AsciiStick:
-			// TODO add CZ
+			Controls[Btn4].disabled = false;
+			Controls[Btn5].disabled = false;
+			buttonMap[Btn4] = DC_BTN_C;
+			buttonMap[Btn5] = DC_BTN_Z;
 			disableControl(AnalogArea);
 			disableControl(LeftTrigger);
 			disableControl(RightTrigger);
 			break;
 		case MDT_PopnMusicController:
-			// TODO add C btn
+			Controls[Btn4].disabled = false;
+			buttonMap[Btn4] = DC_BTN_C;
 			disableControl(AnalogArea);
 			disableControl(LeftTrigger);
 			disableControl(RightTrigger);

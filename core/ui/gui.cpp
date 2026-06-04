@@ -542,8 +542,7 @@ static void gui_display_commands()
 		game.fileName = settings.content.fileName;
 		GameBoxart art = boxart.getBoxart(game);
 		ImguiFileTexture tex(art.boxartPath);
-		// TODO use placeholder image if not available
-		tex.draw(ScaledVec2(100, 100));
+		tex.drawPreview(ScaledVec2(100, 100));
 
 		ImGui::SameLine();
 		if (!lowHeight)
