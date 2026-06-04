@@ -333,8 +333,8 @@ static void drawSorted(int first, int count, bool multipass)
 		glcache.StencilMask(0);
 
 		// We use the modifier volumes shader because it's fast. We don't need textures, etc.
-		glcache.UseProgram(gl.modvol_shader.program);
-		glUniform1f(gl.modvol_shader.sp_ShaderColor, 1.f);
+		bindModVolShader(false, false);
+		glUniform1f(gl.modvol_shader[0].sp_ShaderColor, 1.f);
 
 		glcache.DepthFunc(GL_GEQUAL);
 		glcache.DepthMask(GL_TRUE);
@@ -344,8 +344,13 @@ static void drawSorted(int first, int count, bool multipass)
 			const PolyParam* params = &gl.rendContext->global_param_tr[gl.rendContext->sortedTriangles[p].polyIndex];
 			if (!params->isp.ZWriteDis)
 			{
-				// FIXME no clipping in modvol shader
-				//SetTileClip(gp->tileclip,true);
+				Rect clip_rect;
+				TileClipping clipmode = setTileClip(params->tileclip, clip_rect);
+				bindModVolShader(false, clipmode == TileClipping::Inside);
+				if (clipmode == TileClipping::Inside)
+					glUniform4f(gl.modvol_shader[1].pp_ClipTest, (float)clip_rect.origin.x, (float)clip_rect.origin.y,
+							(float)clip_rect.bottomRight().x, (float)clip_rect.bottomRight().y);
+				glUniform1f(gl.modvol_shader[clipmode == TileClipping::Inside ? 1 : 0].sp_ShaderColor, 1.f);
 
 				SetCull(params->isp.CullMode ^ 1);
 
@@ -522,27 +527,35 @@ void DrawModVols(int first, int count)
 
 		if (param.count == 0)
 			continue;
+
+		Rect clip_rect;
+		TileClipping clipmode = setTileClip(param.tileclip, clip_rect);
+		const bool insideClip = clipmode == TileClipping::Inside;
+
 		if (param.isNaomi2())
 		{
-			glcache.UseProgram(gl.n2ModVolShader.program);
+			bindModVolShader(true, insideClip);
 			if (param.mvMatrix != curMVMat)
 			{
 				curMVMat = param.mvMatrix;
-				glUniformMatrix4fv(gl.n2ModVolShader.mvMat, 1, GL_FALSE, gl.rendContext->matrices[curMVMat].mat);
+				glUniformMatrix4fv(gl.n2ModVolShader[insideClip].mvMat, 1, GL_FALSE, gl.rendContext->matrices[curMVMat].mat);
 			}
 			if (param.projMatrix != curProjMat)
 			{
 				curProjMat = param.projMatrix;
-				glUniformMatrix4fv(gl.n2ModVolShader.projMat, 1, GL_FALSE, gl.rendContext->matrices[curProjMat].mat);
+				glUniformMatrix4fv(gl.n2ModVolShader[insideClip].projMat, 1, GL_FALSE, gl.rendContext->matrices[curProjMat].mat);
 			}
 		}
 		else
 		{
-			glcache.UseProgram(gl.modvol_shader.program);
+			bindModVolShader(false, insideClip);
 		}
-		Rect clip_rect;
-		setTileClip(param.tileclip, clip_rect);
-		// TODO inside clipping
+		if (insideClip)
+		{
+			const GLint loc = param.isNaomi2() ? gl.n2ModVolShader[1].pp_ClipTest : gl.modvol_shader[1].pp_ClipTest;
+			glUniform4f(loc, (float)clip_rect.origin.x, (float)clip_rect.origin.y,
+					(float)clip_rect.bottomRight().x, (float)clip_rect.bottomRight().y);
+		}
 
 		u32 mv_mode = param.isp.DepthMode;
 
@@ -741,7 +754,7 @@ void writeFramebufferToVRAM()
 		width = scaledW;
 		height = scaledH;
 	}
-	u32 tex_addr = gl.rendContext->fb_W_SOF1 & VRAM_MASK; // TODO SCALER_CTL.interlace, SCALER_CTL.fieldselect
+	u32 tex_addr = getFbWriteAddress(*gl.rendContext);
 
 	glPixelStorei(GL_PACK_ALIGNMENT, 1);
 	u32 linestride = gl.rendContext->fb_W_LINESTRIDE * 8;

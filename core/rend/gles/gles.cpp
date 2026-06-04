@@ -376,12 +376,20 @@ void main()
 
 static const char* ModifierVolumeShader = R"(
 uniform lowp float sp_ShaderColor;
+#if pp_ClipInside == 1
+uniform highp vec4 pp_ClipTest;
+#endif
 
 /* Vertex input*/
 in highp vec3 vtx_uv;
 
 void main()
 {
+#if pp_ClipInside == 1
+	if (gl_FragCoord.x >= pp_ClipTest.x && gl_FragCoord.x <= pp_ClipTest.z
+			&& gl_FragCoord.y >= pp_ClipTest.y && gl_FragCoord.y <= pp_ClipTest.w)
+		discard;
+#endif
 #if TARGET_GL != GLES2
 #if DIV_POS_Z == 1
 	highp float w = 100000.0 / vtx_uv.z;
@@ -450,10 +458,16 @@ static void gl_delete_shaders()
 			glcache.DeleteProgram(it.second.program);
 	}
 	gl.shaders.clear();
-	glcache.DeleteProgram(gl.modvol_shader.program);
-	gl.modvol_shader.program = 0;
-	glcache.DeleteProgram(gl.n2ModVolShader.program);
-	gl.n2ModVolShader.program = 0;
+	for (auto& shader : gl.modvol_shader)
+	{
+		glcache.DeleteProgram(shader.program);
+		shader.program = 0;
+	}
+	for (auto& shader : gl.n2ModVolShader)
+	{
+		glcache.DeleteProgram(shader.program);
+		shader.program = 0;
+	}
 }
 
 void termGLCommon()
@@ -871,35 +885,61 @@ bool CompilePipelineShader(PipelineShader* s)
 	return true;
 }
 
-static void create_modvol_shader()
+void create_modvol_shader(bool insideClip)
 {
-	if (gl.modvol_shader.program != 0)
+	if (gl.modvol_shader[insideClip].program != 0)
 		return;
 	VertexSource vertexShader(false, config::NativeDepthInterpolation);
 
 	OpenGlSource fragmentShader;
 	fragmentShader.addConstant("pp_Gouraud", 0)
+			.addConstant("pp_ClipInside", insideClip)
 			.addConstant("DIV_POS_Z", config::NativeDepthInterpolation)
 			.addSource(PixelCompatShader)
 			.addSource(GouraudSource)
 			.addSource(ModifierVolumeShader);
 
-	gl.modvol_shader.program = gl_CompileAndLink(vertexShader.generate().c_str(), fragmentShader.generate().c_str());
-	gl.modvol_shader.ndcMat = glGetUniformLocation(gl.modvol_shader.program, "ndcMat");
-	gl.modvol_shader.sp_ShaderColor = glGetUniformLocation(gl.modvol_shader.program, "sp_ShaderColor");
-	gl.modvol_shader.depth_scale = glGetUniformLocation(gl.modvol_shader.program, "depth_scale");
+	gl.modvol_shader[insideClip].program = gl_CompileAndLink(vertexShader.generate().c_str(), fragmentShader.generate().c_str());
+	gl.modvol_shader[insideClip].ndcMat = glGetUniformLocation(gl.modvol_shader[insideClip].program, "ndcMat");
+	gl.modvol_shader[insideClip].sp_ShaderColor = glGetUniformLocation(gl.modvol_shader[insideClip].program, "sp_ShaderColor");
+	gl.modvol_shader[insideClip].depth_scale = glGetUniformLocation(gl.modvol_shader[insideClip].program, "depth_scale");
+	if (insideClip)
+		gl.modvol_shader[insideClip].pp_ClipTest = glGetUniformLocation(gl.modvol_shader[insideClip].program, "pp_ClipTest");
 
 	if (gl.gl_major >= 3)
 	{
 		N2VertexSource n2vertexShader(false, true, false);
 		fragmentShader.setConstant("DIV_POS_Z", false);
-		gl.n2ModVolShader.program = gl_CompileAndLink(n2vertexShader.generate().c_str(), fragmentShader.generate().c_str());
-		gl.n2ModVolShader.ndcMat = glGetUniformLocation(gl.n2ModVolShader.program, "ndcMat");
-		gl.n2ModVolShader.sp_ShaderColor = glGetUniformLocation(gl.n2ModVolShader.program, "sp_ShaderColor");
-		gl.n2ModVolShader.depth_scale = glGetUniformLocation(gl.n2ModVolShader.program, "depth_scale");
-		gl.n2ModVolShader.mvMat = glGetUniformLocation(gl.n2ModVolShader.program, "mvMat");
-		gl.n2ModVolShader.projMat = glGetUniformLocation(gl.n2ModVolShader.program, "projMat");
+		gl.n2ModVolShader[insideClip].program = gl_CompileAndLink(n2vertexShader.generate().c_str(), fragmentShader.generate().c_str());
+		gl.n2ModVolShader[insideClip].ndcMat = glGetUniformLocation(gl.n2ModVolShader[insideClip].program, "ndcMat");
+		gl.n2ModVolShader[insideClip].sp_ShaderColor = glGetUniformLocation(gl.n2ModVolShader[insideClip].program, "sp_ShaderColor");
+		gl.n2ModVolShader[insideClip].depth_scale = glGetUniformLocation(gl.n2ModVolShader[insideClip].program, "depth_scale");
+		gl.n2ModVolShader[insideClip].mvMat = glGetUniformLocation(gl.n2ModVolShader[insideClip].program, "mvMat");
+		gl.n2ModVolShader[insideClip].projMat = glGetUniformLocation(gl.n2ModVolShader[insideClip].program, "projMat");
+		if (insideClip)
+			gl.n2ModVolShader[insideClip].pp_ClipTest = glGetUniformLocation(gl.n2ModVolShader[insideClip].program, "pp_ClipTest");
 	}
+}
+
+void bindModVolShader(bool naomi2, bool insideClip)
+{
+	create_modvol_shader(insideClip);
+	if (naomi2)
+	{
+		glcache.UseProgram(gl.n2ModVolShader[insideClip].program);
+		if (gl.n2ModVolShader[insideClip].depth_scale != -1)
+			glUniform4fv(gl.n2ModVolShader[insideClip].depth_scale, 1, ShaderUniforms.depth_coefs);
+		glUniformMatrix4fv(gl.n2ModVolShader[insideClip].ndcMat, 1, GL_FALSE, &ShaderUniforms.ndcMat[0][0]);
+	}
+	else
+	{
+		glcache.UseProgram(gl.modvol_shader[insideClip].program);
+		if (gl.modvol_shader[insideClip].depth_scale != -1)
+			glUniform4fv(gl.modvol_shader[insideClip].depth_scale, 1, ShaderUniforms.depth_coefs);
+		glUniformMatrix4fv(gl.modvol_shader[insideClip].ndcMat, 1, GL_FALSE, &ShaderUniforms.ndcMat[0][0]);
+	}
+	glUniform1f(naomi2 ? gl.n2ModVolShader[insideClip].sp_ShaderColor : gl.modvol_shader[insideClip].sp_ShaderColor,
+			1 - FPU_SHAD_SCALE.scale_factor / 256.f);
 }
 
 static void gl_create_resources()
@@ -1132,18 +1172,10 @@ bool OpenGLRenderer::renderFrame(int width, int height)
 	
 	if (config::ModifierVolumes)
 	{
-		create_modvol_shader();
-		glcache.UseProgram(gl.modvol_shader.program);
-		if (gl.modvol_shader.depth_scale != -1)
-			glUniform4fv(gl.modvol_shader.depth_scale, 1, ShaderUniforms.depth_coefs);
-		glUniformMatrix4fv(gl.modvol_shader.ndcMat, 1, GL_FALSE, &ShaderUniforms.ndcMat[0][0]);
-		glUniform1f(gl.modvol_shader.sp_ShaderColor, 1 - FPU_SHAD_SCALE.scale_factor / 256.f);
-
-		glcache.UseProgram(gl.n2ModVolShader.program);
-		if (gl.n2ModVolShader.depth_scale != -1)
-			glUniform4fv(gl.n2ModVolShader.depth_scale, 1, ShaderUniforms.depth_coefs);
-		glUniformMatrix4fv(gl.n2ModVolShader.ndcMat, 1, GL_FALSE, &ShaderUniforms.ndcMat[0][0]);
-		glUniform1f(gl.n2ModVolShader.sp_ShaderColor, 1 - FPU_SHAD_SCALE.scale_factor / 256.f);
+		create_modvol_shader(false);
+		create_modvol_shader(true);
+		bindModVolShader(false, false);
+		bindModVolShader(true, false);
 	}
 
 	ShaderUniforms.PT_ALPHA=(PT_ALPHA_REF&0xFF)/255.0f;

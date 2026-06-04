@@ -113,6 +113,7 @@ void init()
 	state.RBP = 0;
 	state.MDEC_CT = 1;
 	state.dirty = true;
+	memset(state.MEMWVALID, 0, sizeof(state.MEMWVALID));
 
 	recInit();
 }

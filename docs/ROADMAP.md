@@ -265,8 +265,24 @@ Focus: SH4, memory, disc, audio, PVR—what most DC games stress.
 
 ---
 
+## Incremental audit log
+
+| Date | Fixed | Still open |
+|------|-------|------------|
+| 2026-06-04 | **GD-ROM:** `GDCC_GETTOC` HLE, CD sector-type mapping, PIO length check, `invoke_multi_callback()` DMA ordering. See `core/hw/gdrom/README.md`. | v3 redesign, SPI `0x70`, NBA 2K `GET_CMD_STAT`, CUE/CDI/imgread |
+| 2026-06-04 | **SH4 dynarec:** SSA `shop_ifb` versioning; decoder `shop_trapa`/`shop_sleep`/`shop_sync_ssr` + RTE `BET_DynamicIntr` path; `shil_op_clobbers_context()`. | ConstProp gaps, MMU/WinCE, `sh4_cycles` area waits |
+| 2026-06-04 | **PVR:** `getFbWriteAddress()` interlace write-back; modvol outside/inside clip (GLES/DX9/DX11/Vulkan). | OIT modvol tile clip, Vulkan OIT subpass |
+| 2026-06-04 | **AICA:** DSP SRAM write deferred 2 steps (interpreter + x86/x64/ARM/ARM64 JIT). | Volume stacking unverified |
+| — | **Deferred (non-goals):** Naomi ROM parity, iOS, rec_v1 revival. | rec_v2: ARM64/x64 offsets, mainloop, targeted SMC invalidation |
+
+---
+
 ## Revision history
 
 | Date | Change |
 |------|--------|
+| 2026-06-04 | Audit polish: GD-ROM callback helper cleanup, SH4 `shil_op_clobbers_context`, consolidated audit log |
+| 2026-06-04 | GD-ROM HLE DMA callback ordering; SH4 decoder rte/trapa/sleep canonical ops |
+| 2026-06-04 | Modvol inside clipping (pp_ClipInside) on GLES/DX9/DX11/Vulkan; dynarec DSP MWT deferral |
+| 2026-06-04 | Incremental audit log added; documents first roadmap fix pass |
 | 2026-06-04 | Initial unified roadmap from in-repo sources and core TODO audit |

@@ -339,10 +339,18 @@ layout (location = 0) out vec4 FragColor;
 layout (push_constant) uniform pushBlock
 {
 	float sp_ShaderColor;
+#if pp_ClipInside == 1
+	vec4 clipTest;
+#endif
 } pushConstants;
 
 void main()
 {
+#if pp_ClipInside == 1
+	if (gl_FragCoord.x >= pushConstants.clipTest.x && gl_FragCoord.x <= pushConstants.clipTest.z
+			&& gl_FragCoord.y >= pushConstants.clipTest.y && gl_FragCoord.y <= pushConstants.clipTest.w)
+		discard;
+#endif
 #if DIV_POS_Z == 1
 	highp float w = 100000.0 / depth;
 #else
@@ -775,10 +783,11 @@ vk::UniqueShaderModule ShaderManager::compileShader(const ModVolShaderParams& pa
 				.addSource(params.naomi2 ? N2ModVolVertexShaderSource : ModVolVertexShaderSource).generate());
 }
 
-vk::UniqueShaderModule ShaderManager::compileModVolFragmentShader(bool divPosZ)
+vk::UniqueShaderModule ShaderManager::compileModVolFragmentShader(bool divPosZ, bool insideClip)
 {
 	return ShaderCompiler::Compile(vk::ShaderStageFlagBits::eFragment,
 			VulkanSource().addConstant("DIV_POS_Z", (int)divPosZ)
+				.addConstant("pp_ClipInside", (int)insideClip)
 				.addSource(ModVolFragmentShaderSource).generate());
 }
 

@@ -469,3 +469,10 @@ void getWriteFBToVramParams(const rend_context& ctx, glm::ivec2& scaledSize, Rec
 	finalClip.size = glm::vec2(ctx.tileClip.size) * scale;
 	finalClip = intersect(finalClip, ctx.fbClip);
 }
+
+u32 getFbWriteAddress(const rend_context& ctx)
+{
+	if (ctx.scaler_ctl.interlace)
+		return (ctx.scaler_ctl.fieldselect ? ctx.fb_W_SOF2 : ctx.fb_W_SOF1) & VRAM_MASK;
+	return ctx.fb_W_SOF1 & VRAM_MASK;
+}

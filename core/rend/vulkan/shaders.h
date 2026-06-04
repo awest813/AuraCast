@@ -110,11 +110,12 @@ public:
 	vk::ShaderModule GetFragmentShader(const FragmentShaderParams& params) { return getShader(fragmentShaders, params); }
 	vk::ShaderModule GetModVolVertexShader(const ModVolShaderParams& params) { return getShader(modVolVertexShaders, params); }
 
-	vk::ShaderModule GetModVolShader(bool divPosZ)
+	vk::ShaderModule GetModVolShader(bool divPosZ, bool insideClip = false)
 	{
-		auto& modVolShader = modVolShaders[divPosZ];
+		const u32 index = (u32)divPosZ | ((u32)insideClip << 1);
+		auto& modVolShader = modVolShaders[index];
 		if (!modVolShader)
-			modVolShader = compileModVolFragmentShader(divPosZ);
+			modVolShader = compileModVolFragmentShader(divPosZ, insideClip);
 		return *modVolShader;
 	}
 	vk::ShaderModule GetQuadVertexShader(bool rotate = false)
@@ -153,8 +154,8 @@ public:
 		vertexShaders.clear();
 		fragmentShaders.clear();
 		modVolVertexShaders.clear();
-		modVolShaders[0].reset();
-		modVolShaders[1].reset();
+		for (auto& shader : modVolShaders)
+			shader.reset();
 		quadVertexShader.reset();
 		quadRotateVertexShader.reset();
 		quadFragmentShader.reset();
@@ -175,14 +176,14 @@ private:
 	vk::UniqueShaderModule compileShader(const VertexShaderParams& params);
 	vk::UniqueShaderModule compileShader(const FragmentShaderParams& params);
 	vk::UniqueShaderModule compileShader(const ModVolShaderParams& params);
-	vk::UniqueShaderModule compileModVolFragmentShader(bool divPosZ);
+	vk::UniqueShaderModule compileModVolFragmentShader(bool divPosZ, bool insideClip);
 	vk::UniqueShaderModule compileQuadVertexShader(bool rotate);
 	vk::UniqueShaderModule compileQuadFragmentShader(bool ignoreTexAlpha);
 
 	std::map<u32, vk::UniqueShaderModule> vertexShaders;
 	std::map<u32, vk::UniqueShaderModule> fragmentShaders;
 	std::map<u32, vk::UniqueShaderModule> modVolVertexShaders;
-	vk::UniqueShaderModule modVolShaders[2];
+	vk::UniqueShaderModule modVolShaders[4];
 	vk::UniqueShaderModule quadVertexShader;
 	vk::UniqueShaderModule quadRotateVertexShader;
 	vk::UniqueShaderModule quadFragmentShader;

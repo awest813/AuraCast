@@ -376,7 +376,7 @@ static void gd_disc_change()
 static void gd_spi_pio_end(const u8* buffer, u32 len, gd_states next_state)
 {
 	if (buffer != nullptr) {
-		verify(len < 0xFFFF);	// TODO shouldn't this be <= 0xFFFF ?
+		verify(len <= 0xFFFF);
 		memcpy(pio_buff.fill(len), buffer, len);
 	}
 	pio_buff.next_state = next_state;
@@ -387,7 +387,7 @@ static void gd_spi_pio_end(const u8* buffer, u32 len, gd_states next_state)
 }
 static void gd_spi_pio_read_end(u32 len, gd_states next_state)
 {
-	verify(len < 0xFFFF);		// TODO see above
+	verify(len <= 0xFFFF);
 	pio_buff.resetSize(len);
 	pio_buff.next_state = next_state;
 
@@ -702,6 +702,32 @@ u32 gd_get_subcode(u32 format, u32 fad, u8 *subc_info)
 	return subc_info[3];
 }
 
+static u32 gdrom_cd_read_sector_type(const GDReadBlockCmd& readcmd)
+{
+	// CD-DA or raw sector with subcode/sync
+	if (readcmd.other == 1 || readcmd.expdtype == 1)
+		return 2352;
+	// Full raw sector (header + subheader + user + sync/ecc/edc)
+	if (readcmd.head == 1 && readcmd.subh == 1 && readcmd.data == 1 && readcmd.other == 1)
+		return 2352;
+	// Mode 2 Form 1 without sync
+	if (readcmd.head == 1 && readcmd.subh == 1 && readcmd.data == 1 && readcmd.expdtype == 3 && readcmd.other == 0)
+		return 2340;
+	// Mode 2 with subheader
+	if (readcmd.subh == 1 && readcmd.data == 1 && readcmd.head == 0 && readcmd.other == 0)
+		return 2336;
+	// Mode 1 sector without sync
+	if (readcmd.head == 1 && readcmd.data == 1 && readcmd.subh == 0 && readcmd.other == 0)
+		return 2340;
+	// User data only
+	if (readcmd.data == 1 && readcmd.head == 0 && readcmd.subh == 0 && readcmd.other == 0)
+		return 2048;
+
+	WARN_LOG(GDROM, "GDROM: unhandled CD read settings head %d subh %d other %d data %d type %d",
+			readcmd.head, readcmd.subh, readcmd.other, readcmd.data, readcmd.expdtype);
+	return readcmd.data ? 2048 : 2352;
+}
+
 static void gd_process_spi_cmd()
 {
 
@@ -740,21 +766,13 @@ static void gd_process_spi_cmd()
 		break;
 
 		/////////////////////////////////////////////////
-		// *FIXME* CHECK FOR DMA, Diff Settings !?!@$#!@%
 	case SPI_CD_READ:
 	case SPI_CD_READ2:
 		{
 #define readcmd packet_cmd.GDReadBlock
 
 			cdda.status = cdda_t::NoInfo;
-			u32 sector_type = 2048;
-			if (readcmd.head == 1 && readcmd.subh == 1 && readcmd.data == 1 && readcmd.expdtype == 3 && readcmd.other == 0)
-				sector_type = 2340;
-			else if (readcmd.other == 1 || readcmd.expdtype == 1) // Expected Data Type: CD-DA
-				sector_type = 2352;
-			else if (readcmd.head == 1 || readcmd.subh == 1 || readcmd.other == 1 || readcmd.data == 0)
-				WARN_LOG(GDROM, "GDROM: *FIXME* ADD MORE CD READ SETTINGS head %d subh %d other %d data %d type %d",
-						readcmd.head, readcmd.subh, readcmd.other, readcmd.data, readcmd.expdtype);
+			u32 sector_type = gdrom_cd_read_sector_type(readcmd);
 
 			read_params.start_sector = GetFAD(&readcmd.b[2], readcmd.prmtype);
 			if (packet_cmd.data_8[0] == SPI_CD_READ)

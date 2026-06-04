@@ -288,8 +288,17 @@ PSO main(in pixel inpix)
 	return pso;
 }
 
-PSO modifierVolume(float4 uv : TEXCOORD0)
+PSO modifierVolume(float4 uv : TEXCOORD0
+#if pp_ClipInside == 1
+		, float4 pos : VPOS
+#endif
+)
 {
+#if pp_ClipInside == 1
+	if (pos.x >= clipTest.x && pos.x <= clipTest.z
+			&& pos.y >= clipTest.y && pos.y <= clipTest.w)
+		discard;
+#endif
 	PSO pso;
 #if DIV_POS_Z == 1
 	float w = 100000.0f / uv.w;
@@ -405,11 +414,13 @@ const ComPtr<IDirect3DVertexShader9>& D3DShaders::getVertexShader(bool gouraud)
 	return vertexShader;
 }
 
-const ComPtr<IDirect3DPixelShader9>& D3DShaders::getModVolShader()
+const ComPtr<IDirect3DPixelShader9>& D3DShaders::getModVolShader(bool insideClip)
 {
-	ComPtr<IDirect3DPixelShader9>& modVolShader = modVolShaders[config::NativeDepthInterpolation];
+	const u32 index = (u32)insideClip | ((u32)config::NativeDepthInterpolation << 1);
+	ComPtr<IDirect3DPixelShader9>& modVolShader = modVolShaders[index];
 	if (!modVolShader)
 	{
+		PixelMacros[MacroClipInside].Definition = MacroValues[insideClip];
 		PixelMacros[MacroDivPosZ].Definition = MacroValues[config::NativeDepthInterpolation];
 		modVolShader = compilePS(PixelShader, "modifierVolume", PixelMacros);
 	}

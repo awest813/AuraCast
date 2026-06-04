@@ -30,7 +30,7 @@ public:
 			bool pp_Offset, u32 pp_FogCtrl, bool pp_BumpMap, bool fog_clamping, bool trilinear, int palette, bool gouraud,
 			bool clipInside, bool dithering);
 	const ComPtr<IDirect3DVertexShader9>& getVertexShader(bool gouraud);
-	const ComPtr<IDirect3DPixelShader9>& getModVolShader();
+	const ComPtr<IDirect3DPixelShader9>& getModVolShader(bool insideClip = false);
 	void term();
 
 private:
@@ -41,7 +41,7 @@ private:
 	ComPtr<IDirect3DDevice9> device;
 	std::unordered_map<u32, ComPtr<IDirect3DPixelShader9>> shaders;
 	ComPtr<IDirect3DVertexShader9> vertexShaders[4];
-	ComPtr<IDirect3DPixelShader9> modVolShaders[2];
+	ComPtr<IDirect3DPixelShader9> modVolShaders[4];
 	WinLibLoader d3dx9Library;
 	decltype(D3DXCompileShader) *pD3DXCompileShader = nullptr;
 	decltype(D3DXGetVertexShaderProfile) *pD3DXGetVertexShaderProfile = nullptr;

@@ -549,8 +549,6 @@ void D3DRenderer::drawSorted(int first, int count, bool multipass)
 		devCache.SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
 
 		// We use the modifier volumes shader because it's fast. We don't need textures, etc.
-		devCache.SetPixelShader(shaders.getModVolShader());
-
 		devCache.SetRenderState(D3DRS_ZFUNC, D3DCMP_GREATEREQUAL);
 		devCache.SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
 		devCache.SetRenderState(D3DRS_SCISSORTESTENABLE, scissorEnable);
@@ -562,8 +560,14 @@ void D3DRenderer::drawSorted(int first, int count, bool multipass)
 			const PolyParam *params = &rendContext->global_param_tr[rendContext->sortedTriangles[p].polyIndex];
 			if (!params->isp.ZWriteDis)
 			{
-				// FIXME no clipping in modvol shader
-				//SetTileClip(gp->tileclip,true);
+				Rect clip_rect;
+				TileClipping clipmode = setTileClip(params->tileclip, clip_rect);
+				devCache.SetPixelShader(shaders.getModVolShader(clipmode == TileClipping::Inside));
+				if (clipmode == TileClipping::Inside)
+				{
+					float f[] = { (float)clip_rect.origin.x, (float)clip_rect.origin.y, (float)clip_rect.bottomRight().x, (float)clip_rect.bottomRight().y };
+					device->SetPixelShaderConstantF(4, f, 1);
+				}
 
 				devCache.SetRenderState(D3DRS_CULLMODE, CullMode[params->isp.CullMode]);
 				device->DrawIndexedPrimitive(D3DPT_TRIANGLELIST, 0, 0, rendContext->sortedTriangles[p].count, rendContext->sortedTriangles[p].first, rendContext->sortedTriangles[p].count / 3);
@@ -720,8 +724,13 @@ void D3DRenderer::drawModVols(int first, int count)
 		else
 			setMVS_Mode(Xor, param.isp);	// XOR'ing (closed volume)
 
-		setTileClip(param.tileclip, clip_rect);
-		//TODO inside clipping
+		TileClipping clipmode = setTileClip(param.tileclip, clip_rect);
+		devCache.SetPixelShader(shaders.getModVolShader(clipmode == TileClipping::Inside));
+		if (clipmode == TileClipping::Inside)
+		{
+			float f[] = { (float)clip_rect.origin.x, (float)clip_rect.origin.y, (float)clip_rect.bottomRight().x, (float)clip_rect.bottomRight().y };
+			device->SetPixelShaderConstantF(4, f, 1);
+		}
 
 		device->DrawPrimitive(D3DPT_TRIANGLELIST, param.first * 3, param.count);
 
@@ -1339,7 +1348,7 @@ void D3DRenderer::writeFramebufferToVRAM()
 		height = scaledH;
 		fbSurface = fbScaledSurface;
 	}
-	u32 texAddress = rendContext->fb_W_SOF1 & VRAM_MASK; // TODO SCALER_CTL.interlace, SCALER_CTL.fieldselect
+	u32 texAddress = getFbWriteAddress(*rendContext);
 	u32 linestride = rendContext->fb_W_LINESTRIDE * 8;
 
 	ComPtr<IDirect3DSurface9> offscreenSurface;

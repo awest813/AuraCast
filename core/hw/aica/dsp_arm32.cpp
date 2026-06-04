@@ -245,6 +245,19 @@ public:
 
 			if (step & 1)
 			{
+				Label skipDeferredWrite;
+				const u32 widx = step & 3;
+				Ldr(r0, dsp_operand(DSP->MEMWVALID, widx, 1));
+				Cmp(r0, 0);
+				Beq(skipDeferredWrite);
+				Ldr(r0, dsp_operand(DSP->MEMWADDR, widx, 4));
+				Ldrh(r1, dsp_operand(DSP->MEMWDATA, widx, 2));
+				Mov(r2, getAicaRam());
+				Strh(r1, MemOperand(r2, r0));
+				Mov(r1, 0);
+				Strb(r1, dsp_operand(DSP->MEMWVALID, widx, 1));
+				Bind(skipDeferredWrite);
+
 				const Register& ADDR = r3;
 				if (op.MRD)			// memory only allowed on odd. DoA inserts NOPs on even
 				{
@@ -258,14 +271,16 @@ public:
 				}
 				if (op.MWT)
 				{
-					// *(u16 *)&aica_ram[ADDR & ARAM_MASK] = PACK(SHIFTED);
 					Ldr(r0, dsp_operand(&DSP->SHIFTED));
 					genCallRuntime(PACK);
 					Mov(r2, r0);
 
 					calculateADDR(ADDR, op);
-					Mov(r1, getAicaRam());
-					Strh(r2, MemOperand(r1, ADDR));
+					const u32 qidx = (step + 2) & 3;
+					Strh(r2, dsp_operand(DSP->MEMWDATA, qidx, 2));
+					Str(ADDR, dsp_operand(DSP->MEMWADDR, qidx, 4));
+					Mov(r0, 1);
+					Strb(r0, dsp_operand(DSP->MEMWVALID, qidx, 1));
 				}
 			}
 

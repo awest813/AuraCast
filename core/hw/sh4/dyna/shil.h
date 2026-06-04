@@ -155,6 +155,20 @@ enum shil_param_type
 #define SHIL_MODE 0
 #include "shil_canonical.h"
 
+inline bool shil_op_clobbers_context(shilop op)
+{
+	switch (op)
+	{
+	case shop_ifb:
+	case shop_trapa:
+	case shop_sleep:
+	case shop_illegal:
+		return true;
+	default:
+		return false;
+	}
+}
+
 struct shil_param
 {
 	shil_param()

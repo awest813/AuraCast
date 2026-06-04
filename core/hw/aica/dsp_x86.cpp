@@ -249,6 +249,16 @@ public:
 
 			if (step & 1)
 			{
+				const u32 widx = step & 3;
+				cmp(byte[&DSP->MEMWVALID[widx]], 0);
+				je(".skip_deferred_write");
+				mov(edx, dword[&DSP->MEMWADDR[widx]]);
+				mov(ax, word[&DSP->MEMWDATA[widx]]);
+				mov(ecx, (uintptr_t)&aica_ram[0]);
+				mov(word[ecx + edx], ax);
+				mov(byte[&DSP->MEMWVALID[widx]], 0);
+				L(".skip_deferred_write");
+
 				if (op.MRD || op.MWT)
 				{
 					if ((op.ADRL && op.SHIFT == 3) || op.EWT)
@@ -257,13 +267,13 @@ public:
 				const Xbyak::Reg32 ADDR = Y;
 				if (op.MWT)
 				{
-					// *(u16 *)&aica_ram[ADDR & ARAM_MASK] = PACK(SHIFTED);
-					// SHIFTED is in ecx
 					call((const void *)PACK);
 
 					CalculateADDR(ADDR, op);
-					mov(ecx, (uintptr_t)&aica_ram[0]);
-					mov(word[ecx + ADDR], ax);
+					const u32 qidx = (step + 2) & 3;
+					mov(word[&DSP->MEMWDATA[qidx]], ax);
+					mov(dword[&DSP->MEMWADDR[qidx]], ADDR);
+					mov(byte[&DSP->MEMWVALID[qidx]], 1);
 				}
 				if (op.MRD)			// memory only allowed on odd. DoA inserts NOPs on even
 				{

@@ -370,6 +370,11 @@ struct MVPixel
 
 PSO modifierVolume(in MVPixel inpix)
 {
+#if pp_ClipInside == 1
+	if (inpix.pos.x >= clipTest.x && inpix.pos.x <= clipTest.z
+			&& inpix.pos.y >= clipTest.y && inpix.pos.y <= clipTest.w)
+		discard;
+#endif
 	PSO pso;
 #if DIV_POS_Z == 1
 	float w = 100000.0f / inpix.uv.w;
@@ -608,12 +613,18 @@ const ComPtr<ID3D11VertexShader>& DX11Shaders::getMVVertexShader(bool naomi2)
 	return modVolVertexShaders[index];
 }
 
-const ComPtr<ID3D11PixelShader>& DX11Shaders::getModVolShader()
+const ComPtr<ID3D11PixelShader>& DX11Shaders::getModVolShader(bool insideClip)
 {
-	if (!modVolShader)
-		modVolShader = compilePS(PixelShader, "modifierVolume", PixelMacros);
+	const u32 index = (u32)insideClip | ((u32)(!settings.platform.isNaomi2() && config::NativeDepthInterpolation) << 1);
+	ComPtr<ID3D11PixelShader>& shader = modVolShaders[index];
+	if (!shader)
+	{
+		PixelMacros[MacroClipInside].Definition = MacroValues[insideClip];
+		PixelMacros[MacroDivPosZ].Definition = MacroValues[!settings.platform.isNaomi2() && config::NativeDepthInterpolation];
+		shader = compilePS(PixelShader, "modifierVolume", PixelMacros);
+	}
 
-	return modVolShader;
+	return shader;
 }
 
 const ComPtr<ID3D11VertexShader>& DX11Shaders::getQuadVertexShader(bool rotate)
@@ -726,7 +737,8 @@ void DX11Shaders::term()
 	shaders.clear();
 	for (auto& shader : vertexShaders)
 		shader.reset();
-	modVolShader.reset();
+	for (auto& shader : modVolShaders)
+		shader.reset();
 	for (auto& shader : modVolVertexShaders)
 		shader.reset();
 	quadVertexShader.reset();
