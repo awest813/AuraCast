@@ -260,23 +260,46 @@ void Drawer::DrawModVols(const vk::CommandBuffer& cmdBuffer, int first, int coun
 		if (mod_base == -1)
 			mod_base = param.first;
 
+		const TileClipping tileClip = SetTileClip(cmdBuffer, param.tileclip, scissorRect);
+		const bool insideClip = tileClip == TileClipping::Inside;
+
 		if (!param.isp.VolumeLast && mv_mode > 0)
-			pipeline = pipelineManager->GetModifierVolumePipeline(ModVolMode::Or, param.isp.CullMode, param.isNaomi2());	// OR'ing (open volume or quad)
+			pipeline = pipelineManager->GetModifierVolumePipeline(ModVolMode::Or, param.isp.CullMode, param.isNaomi2(), insideClip);
 		else
-			pipeline = pipelineManager->GetModifierVolumePipeline(ModVolMode::Xor, param.isp.CullMode, param.isNaomi2());	// XOR'ing (closed volume)
+			pipeline = pipelineManager->GetModifierVolumePipeline(ModVolMode::Xor, param.isp.CullMode, param.isNaomi2(), insideClip);
 
 		cmdBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
 		descriptorSets.bindPerPolyDescriptorSets(cmdBuffer, param, first + cmv, curMainBuffer, offsets.naomi2ModVolOffset);
-		SetTileClip(cmdBuffer, param.tileclip, scissorRect);
-		// TODO inside clipping
+		if (insideClip)
+		{
+			const std::array<float, 5> pushConstants = {
+					0.f,
+					(float)scissorRect.offset.x,
+					(float)scissorRect.offset.y,
+					(float)scissorRect.offset.x + (float)scissorRect.extent.width,
+					(float)scissorRect.offset.y + (float)scissorRect.extent.height
+			};
+			cmdBuffer.pushConstants<float>(pipelineManager->GetPipelineLayout(), vk::ShaderStageFlagBits::eFragment, 0, pushConstants);
+		}
 
 		cmdBuffer.draw(param.count * 3, 1, param.first * 3, 0);
 
 		if (mv_mode == 1 || mv_mode == 2)
 		{
 			// Sum the area
-			pipeline = pipelineManager->GetModifierVolumePipeline(mv_mode == 1 ? ModVolMode::Inclusion : ModVolMode::Exclusion, param.isp.CullMode, param.isNaomi2());
+			pipeline = pipelineManager->GetModifierVolumePipeline(mv_mode == 1 ? ModVolMode::Inclusion : ModVolMode::Exclusion, param.isp.CullMode, param.isNaomi2(), insideClip);
 			cmdBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
+			if (insideClip)
+			{
+				const std::array<float, 5> pushConstants = {
+						0.f,
+						(float)scissorRect.offset.x,
+						(float)scissorRect.offset.y,
+						(float)scissorRect.offset.x + (float)scissorRect.extent.width,
+						(float)scissorRect.offset.y + (float)scissorRect.extent.height
+				};
+				cmdBuffer.pushConstants<float>(pipelineManager->GetPipelineLayout(), vk::ShaderStageFlagBits::eFragment, 0, pushConstants);
+			}
 			cmdBuffer.draw((param.first + param.count - mod_base) * 3, 1, mod_base * 3, 0);
 			mod_base = -1;
 		}

@@ -233,7 +233,8 @@ struct gl_ctx
 		GLint depth_scale;
 		GLint sp_ShaderColor;
 		GLint ndcMat;
-	} modvol_shader;
+		GLint pp_ClipTest;
+	} modvol_shader[2];
 
 	struct
 	{
@@ -242,10 +243,11 @@ struct gl_ctx
 		GLint depth_scale;
 		GLint sp_ShaderColor;
 		GLint ndcMat;
+		GLint pp_ClipTest;
 
 		GLint mvMat;
 		GLint projMat;
-	} n2ModVolShader;
+	} n2ModVolShader[2];
 
 	std::unordered_map<u32, PipelineShader> shaders;
 
@@ -384,6 +386,9 @@ void ReadRTTBuffer();
 void glReadFramebuffer(const FramebufferInfo& info);
 GLuint init_output_framebuffer(int width, int height);
 void writeFramebufferToVRAM();
+
+void create_modvol_shader(bool insideClip);
+void bindModVolShader(bool naomi2, bool insideClip);
 
 PipelineShader *GetProgram(bool cp_AlphaTest, bool pp_InsideClipping,
 		bool pp_Texture, bool pp_UseAlpha, bool pp_IgnoreTexA, u32 pp_ShadInstr, bool pp_Offset,

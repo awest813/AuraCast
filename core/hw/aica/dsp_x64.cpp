@@ -262,6 +262,16 @@ public:
 
 			if (step & 1)
 			{
+				const u32 widx = step & 3;
+				cmp(byte[rbx + dsp_operand(DSP->MEMWVALID, widx, 1)], 0);
+				je(".skip_deferred_write", T_NEAR);
+				mov(r8d, dword[rbx + dsp_operand(DSP->MEMWADDR, widx, 4)]);
+				mov(ax, word[rbx + dsp_operand(DSP->MEMWDATA, widx, 2)]);
+				mov(rcx, (uintptr_t)&aica_ram[0]);
+				mov(word[rcx + r8], ax);
+				mov(byte[rbx + dsp_operand(DSP->MEMWVALID, widx, 1)], 0);
+				L(".skip_deferred_write");
+
 				if (op.MRD || op.MWT)
 				{
 					if ((op.ADRL && op.SHIFT == 3) || op.EWT)
@@ -281,13 +291,14 @@ public:
 				}
 				if (op.MWT)
 				{
-					// *(u16 *)&aica_ram[ADDR & ARAM_MASK] = PACK(SHIFTED);
 					mov(call_arg0, edx);	// SHIFTED
 					GenCall(PACK);
 
 					CalculateADDR(ADDR, op, ADRS_REG, MDEC_CT);
-					mov(rcx, (uintptr_t)&aica_ram[0]);
-					mov(word[rcx + ADDR.cvt64()], ax);
+					const u32 qidx = (step + 2) & 3;
+					mov(word[rbx + dsp_operand(DSP->MEMWDATA, qidx, 2)], ax);
+					mov(dword[rbx + dsp_operand(DSP->MEMWADDR, qidx, 4)], ADDR);
+					mov(byte[rbx + dsp_operand(DSP->MEMWVALID, qidx, 1)], 1);
 				}
 				if (op.MRD || op.MWT)
 				{

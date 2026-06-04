@@ -831,7 +831,7 @@ void DX11Renderer::drawModVols(int first, int count)
 
 	deviceContext->OMSetBlendState(blendStates.getState(false, 0, 0, true), nullptr, 0xffffffff);
 
-	deviceContext->PSSetShader(shaders->getModVolShader(), nullptr, 0);
+	deviceContext->PSSetShader(shaders->getModVolShader(false), nullptr, 0);
 
 	setCullMode(0);
 
@@ -840,6 +840,7 @@ void DX11Renderer::drawModVols(int first, int count)
 	int mod_base = -1;
 	int curMVMat = -1;
 	int curProjMat = -1;
+	Rect clip_rect;
 
 	for (int cmv = 0; cmv < count; cmv++)
 	{
@@ -864,9 +865,20 @@ void DX11Renderer::drawModVols(int first, int count)
 			// XOR'ing (closed volume)
 			deviceContext->OMSetDepthStencilState(depthStencilStates.getMVState(DepthStencilStates::Xor), 0);
 
-		Rect clip_rect;
-		setTileClip(param.tileclip, clip_rect);
-		// TODO inside clipping
+		TileClipping clipmode = setTileClip(param.tileclip, clip_rect);
+		deviceContext->PSSetShader(shaders->getModVolShader(clipmode == TileClipping::Inside), nullptr, 0);
+		if (clipmode == TileClipping::Inside)
+		{
+			PixelPolyConstants constants {};
+			constants.clipTest[0] = (float)clip_rect.origin.x;
+			constants.clipTest[1] = (float)clip_rect.origin.y;
+			constants.clipTest[2] = (float)clip_rect.bottomRight().x;
+			constants.clipTest[3] = (float)clip_rect.bottomRight().y;
+			D3D11_MAPPED_SUBRESOURCE mappedSubres;
+			deviceContext->Map(pxlPolyConstants, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedSubres);
+			memcpy(mappedSubres.pData, &constants, sizeof(constants));
+			deviceContext->Unmap(pxlPolyConstants, 0);
+		}
 
 		if (param.count > 0)
 		{

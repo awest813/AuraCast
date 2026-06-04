@@ -21,7 +21,7 @@
 #include "pipeline.h"
 #include "hw/pvr/Renderer_if.h"
 
-void PipelineManager::CreateModVolPipeline(ModVolMode mode, int cullMode, bool naomi2)
+void PipelineManager::CreateModVolPipeline(ModVolMode mode, int cullMode, bool naomi2, bool insideClip)
 {
 	// Vertex input state
 	vk::PipelineVertexInputStateCreateInfo pipelineVertexInputStateCreateInfo;
@@ -129,7 +129,8 @@ void PipelineManager::CreateModVolPipeline(ModVolMode mode, int cullMode, bool n
 
 	ModVolShaderParams shaderParams { naomi2, !settings.platform.isNaomi2() && config::NativeDepthInterpolation };
 	vk::ShaderModule vertex_module = shaderManager->GetModVolVertexShader(shaderParams);
-	vk::ShaderModule fragment_module = shaderManager->GetModVolShader(!settings.platform.isNaomi2() && config::NativeDepthInterpolation);
+	const bool divPosZ = !settings.platform.isNaomi2() && config::NativeDepthInterpolation;
+	vk::ShaderModule fragment_module = shaderManager->GetModVolShader(divPosZ, insideClip);
 
 	std::array<vk::PipelineShaderStageCreateInfo, 2> stages = {
 			vk::PipelineShaderStageCreateInfo(vk::PipelineShaderStageCreateFlags(), vk::ShaderStageFlagBits::eVertex, vertex_module, "main"),
@@ -152,7 +153,7 @@ void PipelineManager::CreateModVolPipeline(ModVolMode mode, int cullMode, bool n
 	  renderPass                                  // renderPass
 	);
 
-	modVolPipelines[hash(mode, cullMode, naomi2)] =
+	modVolPipelines[hash(mode, cullMode, naomi2, insideClip)] =
 			GetContext()->GetDevice().createGraphicsPipelineUnique(GetContext()->GetPipelineCache(),
 					graphicsPipelineCreateInfo).value;
 }

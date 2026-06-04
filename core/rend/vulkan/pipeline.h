@@ -223,13 +223,13 @@ public:
 		return *pipelines[pipehash];
 	}
 
-	vk::Pipeline GetModifierVolumePipeline(ModVolMode mode, int cullMode, bool naomi2)
+	vk::Pipeline GetModifierVolumePipeline(ModVolMode mode, int cullMode, bool naomi2, bool insideClip = false)
 	{
-		u32 pipehash = hash(mode, cullMode, naomi2);
+		u32 pipehash = hash(mode, cullMode, naomi2, insideClip);
 		const auto &pipeline = modVolPipelines.find(pipehash);
 		if (pipeline != modVolPipelines.end())
 			return pipeline->second.get();
-		CreateModVolPipeline(mode, cullMode, naomi2);
+		CreateModVolPipeline(mode, cullMode, naomi2, insideClip);
 
 		return *modVolPipelines[pipehash];
 	}
@@ -257,7 +257,7 @@ public:
 	vk::RenderPass GetRenderPass() const { return renderPass; }
 
 private:
-	void CreateModVolPipeline(ModVolMode mode, int cullMode, bool naomi2);
+	void CreateModVolPipeline(ModVolMode mode, int cullMode, bool naomi2, bool insideClip = false);
 	void CreateDepthPassPipeline(int cullMode, bool naomi2);
 
 	u64 hash(u32 listType, bool sortTriangles, const PolyParam *pp, int gpuPalette, bool dithering) const
@@ -277,9 +277,9 @@ private:
 
 		return hash;
 	}
-	u32 hash(ModVolMode mode, int cullMode, bool naomi2) const
+	u32 hash(ModVolMode mode, int cullMode, bool naomi2, bool insideClip = false) const
 	{
-		return ((int)mode << 2) | cullMode | ((int)naomi2 << 5) | ((int)(!settings.platform.isNaomi2() && config::NativeDepthInterpolation) << 6);
+		return ((int)mode << 2) | cullMode | ((int)naomi2 << 5) | ((int)(!settings.platform.isNaomi2() && config::NativeDepthInterpolation) << 6) | ((int)insideClip << 7);
 	}
 	u32 hash(int cullMode, bool naomi2) const
 	{
