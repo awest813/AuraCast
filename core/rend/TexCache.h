@@ -252,7 +252,7 @@ public:
 			if (texture.dirty && texture.dirty < TargetFrame)
 				list.push_back(id);
 
-			if (list.size() > 5)
+			if (list.size() >= 32)
 				break;
 		}
 

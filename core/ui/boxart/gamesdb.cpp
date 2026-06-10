@@ -218,8 +218,8 @@ void TheGamesDb::parseBoxart(GameBoxart& item, const json& j, int gameId)
 			auto cached = boxartCache.find(url);
 			if (cached != boxartCache.end())
 			{
-				copyFile(cached->second, filename);
-				item.setBoxartPath(filename);
+				if (item.boxartPath != cached->second)
+					item.setBoxartPath(cached->second);
 				item.boxartUrl = url;
 			}
 			else

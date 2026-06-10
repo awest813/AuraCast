@@ -310,21 +310,44 @@ void term()
 
 #else
 #include <curl/curl.h>
+#include <mutex>
 
 namespace http {
+
+static CURL *curlEasy = nullptr;
+static std::mutex curlMutex;
+static std::string cookieJarPath;
 
 void init()
 {
 	curl_global_init(CURL_GLOBAL_ALL);
+	std::lock_guard<std::mutex> lock(curlMutex);
+	if (curlEasy == nullptr)
+	{
+		cookieJarPath = get_writable_data_path("cookies.txt");
+		curlEasy = curl_easy_init();
+	}
 }
 
-static size_t receiveData(void *buffer, size_t size, size_t nmemb, std::vector<u8> *recvBuffer)
+struct CurlRequestContext
 {
-	recvBuffer->insert(recvBuffer->end(), (u8 *)buffer, (u8 *)buffer + size * nmemb);
-	return nmemb * size;
+	std::vector<u8> body;
+	size_t contentLength = 0;
+	Headers *respHeaders = nullptr;
+};
+
+static size_t receiveData(void *buffer, size_t size, size_t nmemb, CurlRequestContext *ctx)
+{
+	const size_t bytes = size * nmemb;
+	const size_t oldSize = ctx->body.size();
+	const size_t newSize = oldSize + bytes;
+	if (ctx->contentLength >= newSize)
+		ctx->body.reserve(ctx->contentLength);
+	ctx->body.insert(ctx->body.end(), (u8 *)buffer, (u8 *)buffer + bytes);
+	return bytes;
 }
 
-static size_t receiveHeader(const char *buffer, size_t size, size_t nitems, Headers *headers)
+static size_t receiveHeader(const char *buffer, size_t size, size_t nitems, CurlRequestContext *ctx)
 {
 	const char *sep = strchr(buffer, ':');
 	if (sep != nullptr)
@@ -332,84 +355,94 @@ static size_t receiveHeader(const char *buffer, size_t size, size_t nitems, Head
 		std::string name = trim_ws(std::string(buffer, sep), " \t\r\n");
 		string_tolower(name);
 		std::string value = trim_ws(std::string(sep + 1, buffer + nitems), " \t\r\n");
-		headers->emplace_back(name, value);
+		if (name == "content-length")
+		{
+			const size_t length = (size_t)std::strtoull(value.c_str(), nullptr, 10);
+			if (length > 0)
+				ctx->contentLength = length;
+		}
+		if (ctx->respHeaders != nullptr)
+			ctx->respHeaders->emplace_back(name, value);
 	}
 	return nitems;
 }
 
-static CURL *makeCurlEasy(const std::string& url)
+static void configureCurlEasy(CURL *curl, const std::string& url)
 {
-	CURL *curl = curl_easy_init();
+	curl_easy_reset(curl);
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, getUserAgent().c_str());
-	curl_easy_setopt(curl, CURLOPT_AUTOREFERER, 1);
-	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1);
-	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 30);	// default is 300 s so 5 min
-
-	curl_easy_setopt(curl, CURLOPT_COOKIEFILE, "");
-
+	curl_easy_setopt(curl, CURLOPT_AUTOREFERER, 1L);
+	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 30L);
+	curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
+	curl_easy_setopt(curl, CURLOPT_COOKIEFILE, cookieJarPath.c_str());
+	curl_easy_setopt(curl, CURLOPT_COOKIEJAR, cookieJarPath.c_str());
 	curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-
-	return curl;
 }
 
 int get(const std::string& url, std::vector<u8>& content, const Headers *reqHeaders, Headers *respHeaders)
 {
-	CURL *curl = makeCurlEasy(url);
+	std::lock_guard<std::mutex> lock(curlMutex);
+	if (curlEasy == nullptr)
+		curlEasy = curl_easy_init();
+	configureCurlEasy(curlEasy, url);
 
 	curl_slist *headers = nullptr;
 	if (reqHeaders != nullptr)
 	{
 		for (const auto& [ key, value ] : *reqHeaders)
 			headers = curl_slist_append(headers, (key + ": " + value).c_str());
-		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+		curl_easy_setopt(curlEasy, CURLOPT_HTTPHEADER, headers);
 	}
-	std::vector<u8> recvBuffer;
-	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, receiveData);
-	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &recvBuffer);
-	if (respHeaders != nullptr) {
-		curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, receiveHeader);
-		curl_easy_setopt(curl, CURLOPT_HEADERDATA, respHeaders);
-	}
-	CURLcode res = curl_easy_perform(curl);
+	CurlRequestContext ctx;
+	ctx.respHeaders = respHeaders;
+	curl_easy_setopt(curlEasy, CURLOPT_WRITEFUNCTION, receiveData);
+	curl_easy_setopt(curlEasy, CURLOPT_WRITEDATA, &ctx);
+	curl_easy_setopt(curlEasy, CURLOPT_HEADERFUNCTION, receiveHeader);
+	curl_easy_setopt(curlEasy, CURLOPT_HEADERDATA, &ctx);
+	CURLcode res = curl_easy_perform(curlEasy);
 	long httpCode = 500;
 	if (res == CURLE_OK)
 	{
-		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
-		content = recvBuffer;
+		curl_easy_getinfo(curlEasy, CURLINFO_RESPONSE_CODE, &httpCode);
+		content = std::move(ctx.body);
 	}
 	curl_slist_free_all(headers);
-	curl_easy_cleanup(curl);
 
 	return (int)httpCode;
 }
 
 int post(const std::string& url, const char *payload, const char *contentType, std::vector<u8>& reply)
 {
-	CURL *curl = makeCurlEasy(url);
-	curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
+	std::lock_guard<std::mutex> lock(curlMutex);
+	if (curlEasy == nullptr)
+		curlEasy = curl_easy_init();
+	configureCurlEasy(curlEasy, url);
+	curl_easy_setopt(curlEasy, CURLOPT_NOSIGNAL, 1L);
 
-	curl_easy_setopt(curl, CURLOPT_POST, 1);
-	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload);
+	curl_easy_setopt(curlEasy, CURLOPT_POST, 1L);
+	curl_easy_setopt(curlEasy, CURLOPT_POSTFIELDS, payload);
 	curl_slist *headers = nullptr;
 	if (contentType != nullptr)
 	{
 		headers = curl_slist_append(headers, ("Content-Type: " + std::string(contentType)).c_str());
-		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+		curl_easy_setopt(curlEasy, CURLOPT_HTTPHEADER, headers);
 	}
 
-	std::vector<u8> recvBuffer;
-	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, receiveData);
-	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &recvBuffer);
-	CURLcode res = curl_easy_perform(curl);
+	CurlRequestContext ctx;
+	curl_easy_setopt(curlEasy, CURLOPT_WRITEFUNCTION, receiveData);
+	curl_easy_setopt(curlEasy, CURLOPT_WRITEDATA, &ctx);
+	curl_easy_setopt(curlEasy, CURLOPT_HEADERFUNCTION, receiveHeader);
+	curl_easy_setopt(curlEasy, CURLOPT_HEADERDATA, &ctx);
+	CURLcode res = curl_easy_perform(curlEasy);
 
 	long httpCode = 500;
 	if (res == CURLE_OK)
 	{
-		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
-		reply = recvBuffer;
+		curl_easy_getinfo(curlEasy, CURLINFO_RESPONSE_CODE, &httpCode);
+		reply = std::move(ctx.body);
 	}
 	curl_slist_free_all(headers);
-	curl_easy_cleanup(curl);
 
 	return (int)httpCode;
 }
@@ -420,10 +453,13 @@ static size_t nullCallback(char *ptr, size_t size, size_t nmemb, void *userdata)
 
 int post(const std::string& url, const std::vector<PostField>& fields)
 {
-	CURL *curl = makeCurlEasy(url);
-	curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1);
+	std::lock_guard<std::mutex> lock(curlMutex);
+	if (curlEasy == nullptr)
+		curlEasy = curl_easy_init();
+	configureCurlEasy(curlEasy, url);
+	curl_easy_setopt(curlEasy, CURLOPT_NOSIGNAL, 1L);
 
-	curl_mime *mime = curl_mime_init(curl);
+	curl_mime *mime = curl_mime_init(curlEasy);
 	for (const auto& field : fields)
 	{
 		curl_mimepart *part = curl_mime_addpart(mime);
@@ -437,22 +473,27 @@ int post(const std::string& url, const std::vector<PostField>& fields)
 		}
 	}
 
-	curl_easy_setopt(curl, CURLOPT_MIMEPOST, mime);
-	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, nullCallback);
+	curl_easy_setopt(curlEasy, CURLOPT_MIMEPOST, mime);
+	curl_easy_setopt(curlEasy, CURLOPT_WRITEFUNCTION, nullCallback);
 
-	CURLcode res = curl_easy_perform(curl);
+	CURLcode res = curl_easy_perform(curlEasy);
 
 	long httpCode = 500;
 	if (res == CURLE_OK)
-		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
+		curl_easy_getinfo(curlEasy, CURLINFO_RESPONSE_CODE, &httpCode);
 	curl_mime_free(mime);
-	curl_easy_cleanup(curl);
 
 	return (int)httpCode;
 }
 
 void term()
 {
+	std::lock_guard<std::mutex> lock(curlMutex);
+	if (curlEasy != nullptr)
+	{
+		curl_easy_cleanup(curlEasy);
+		curlEasy = nullptr;
+	}
 	curl_global_cleanup();
 }
 
