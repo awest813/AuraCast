@@ -81,7 +81,6 @@ static std::string getFontPath(const char* patternText)
 	} FcResult;
 	
 	static auto fcInitLoadConfigAndFonts = (FcConfig * (*)())dlsym(libfontconfig, "FcInitLoadConfigAndFonts");
-	static auto fcConfigDestroy = (void (*)(FcConfig*))dlsym(libfontconfig, "FcConfigDestroy");
 	static auto fcPatternDestroy = (void (*)(FcPattern*))dlsym(libfontconfig, "FcPatternDestroy");
 	static auto fcPatternGetString = (FcResult (*)(const FcPattern*, const char*, int, FcChar8**))dlsym(libfontconfig, "FcPatternGetString");
 	static auto fcNameParse = (FcPattern * (*)(const FcChar8*))dlsym(libfontconfig, "FcNameParse");
@@ -90,7 +89,6 @@ static std::string getFontPath(const char* patternText)
 	static auto fcFontMatch = (FcPattern * (*)(FcConfig*, FcPattern*, FcResult*))dlsym(libfontconfig, "FcFontMatch");
 	
 	if (!fcInitLoadConfigAndFonts ||
-		!fcConfigDestroy ||
 		!fcPatternDestroy ||
 		!fcPatternGetString ||
 		!fcNameParse ||
