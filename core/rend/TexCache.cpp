@@ -33,11 +33,49 @@ const std::array<f32, 16> D_Adjust_LoD_Bias = {
 		0.f, -4.f, -2.f, -1.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f
 };
 
-static std::vector<vram_block*> *VramLocks;
+static VramPageLockList *VramLocks;
+
+struct VramPageLockList
+{
+	static constexpr u32 MAX_LOCKS = 4;
+	vram_block* locks[MAX_LOCKS] {};
+	u8 count = 0;
+
+	bool empty() const { return count == 0; }
+
+	void add(vram_block* block)
+	{
+		for (u8 i = 0; i < count; i++)
+			if (locks[i] == block)
+				return;
+		if (count < MAX_LOCKS)
+			locks[count++] = block;
+	}
+
+	void remove(vram_block* block)
+	{
+		for (u8 i = 0; i < count; i++)
+		{
+			if (locks[i] == block)
+			{
+				locks[i] = locks[--count];
+				locks[count] = nullptr;
+				return;
+			}
+		}
+	}
+
+	void clear()
+	{
+		for (u8 i = 0; i < count; i++)
+			locks[i] = nullptr;
+		count = 0;
+	}
+};
 
 static inline void initVramLocks() {
 	if (VramLocks == nullptr)
-		VramLocks = new std::vector<vram_block*>[VRAM_SIZE_MAX / PAGE_SIZE];
+		VramLocks = new VramPageLockList[VRAM_SIZE_MAX / PAGE_SIZE];
 }
 
 //List functions
@@ -48,14 +86,7 @@ static void vramlock_list_remove(vram_block* block)
 	u32 end = block->end / PAGE_SIZE;
 
 	for (u32 i = base; i <= end; i++)
-	{
-		std::vector<vram_block*>& list = VramLocks[i];
-		for (auto& lock : list)
-		{
-			if (lock == block)
-				lock = nullptr;
-		}
-	}
+		VramLocks[i].remove(block);
 }
  
 static void vramlock_list_add(vram_block* block)
@@ -65,15 +96,11 @@ static void vramlock_list_add(vram_block* block)
 
 	for (u32 i = base; i <= end; i++)
 	{
-		std::vector<vram_block*>& list = VramLocks[i];
+		VramPageLockList& list = VramLocks[i];
 		// If the list is empty then we need to protect vram, otherwise it's already been done
-		if (list.empty() || std::all_of(list.begin(), list.end(), [](vram_block *block) { return block == nullptr; }))
+		if (list.empty())
 			addrspace::protectVram(i * PAGE_SIZE, PAGE_SIZE);
-		auto it = std::find(list.begin(), list.end(), nullptr);
-		if (it != list.end())
-			*it = block;
-		else
-			list.push_back(block);
+		list.add(block);
 	}
 }
  
@@ -85,25 +112,22 @@ bool VramLockedWriteOffset(size_t offset)
 		return false;
 
 	size_t addr_hash = offset / PAGE_SIZE;
-	std::vector<vram_block *>& list = VramLocks[addr_hash];
+	VramPageLockList& list = VramLocks[addr_hash];
 
 	{
 		std::lock_guard<std::mutex> lockguard(vramlist_lock);
 
-		for (auto& lock : list)
-		{
-			if (lock != nullptr)
-			{
-				lock->texture->invalidate();
-
-				if (lock != nullptr)
-				{
-					ERROR_LOG(PVR, "Error : pvr is supposed to remove lock");
-					die("Invalid state");
-				}
-			}
-		}
+		vram_block* pending[VramPageLockList::MAX_LOCKS];
+		const u8 pending_count = list.count;
+		for (u8 i = 0; i < pending_count; i++)
+			pending[i] = list.locks[i];
 		list.clear();
+
+		for (u8 i = 0; i < pending_count; i++)
+		{
+			if (pending[i] != nullptr)
+				pending[i]->texture->invalidate();
+		}
 
 		addrspace::unprotectVram((u32)(offset & ~PAGE_MASK), PAGE_SIZE);
 	}
@@ -769,34 +793,72 @@ void ReadFramebuffer(const FramebufferInfo& info, PixelBuffer<u32>& pb, int& wid
 		case fbde_0555:    // 555 RGB
 			for (int y = 0; y < height; y++)
 			{
-				for (int i = 0; i < width; i++)
+				u32 row_addr = addr;
+				int i = 0;
+				while (i + 1 < width && (row_addr & 3) == 0)
 				{
-					u16 src = pvr_read32p<u16>(addr);
+					const u32 packed = *(const u32 *)&vram[pvr_map32(row_addr)];
+					const u16 src0 = (u16)packed;
+					const u16 src1 = (u16)(packed >> 16);
+					*dst++ = Packer::pack(
+							(((src0 >> 10) & 0x1F) << 3) | fb_concat,
+							(((src0 >> 5) & 0x1F) << 3) | fb_concat,
+							(((src0 >> 0) & 0x1F) << 3) | fb_concat,
+							0xff);
+					*dst++ = Packer::pack(
+							(((src1 >> 10) & 0x1F) << 3) | fb_concat,
+							(((src1 >> 5) & 0x1F) << 3) | fb_concat,
+							(((src1 >> 0) & 0x1F) << 3) | fb_concat,
+							0xff);
+					row_addr += 4;
+					i += 2;
+				}
+				for (; i < width; i++, row_addr += bpp)
+				{
+					const u16 src = *(const u16 *)&vram[pvr_map32(row_addr) & ~1u];
 					*dst++ = Packer::pack(
 							(((src >> 10) & 0x1F) << 3) | fb_concat,
 							(((src >> 5) & 0x1F) << 3) | fb_concat,
 							(((src >> 0) & 0x1F) << 3) | fb_concat,
 							0xff);
-					addr += bpp;
 				}
-				addr += modulus * bpp;
+				addr += width * bpp + modulus * bpp;
 			}
 			break;
 
 		case fbde_565:    // 565 RGB
 			for (int y = 0; y < height; y++)
 			{
-				for (int i = 0; i < width; i++)
+				u32 row_addr = addr;
+				int i = 0;
+				while (i + 1 < width && (row_addr & 3) == 0)
 				{
-					u16 src = pvr_read32p<u16>(addr);
+					const u32 packed = *(const u32 *)&vram[pvr_map32(row_addr)];
+					const u16 src0 = (u16)packed;
+					const u16 src1 = (u16)(packed >> 16);
+					*dst++ = Packer::pack(
+							(((src0 >> 11) & 0x1F) << 3) | fb_concat,
+							(((src0 >> 5) & 0x3F) << 2) | (fb_concat & 3),
+							(((src0 >> 0) & 0x1F) << 3) | fb_concat,
+							0xFF);
+					*dst++ = Packer::pack(
+							(((src1 >> 11) & 0x1F) << 3) | fb_concat,
+							(((src1 >> 5) & 0x3F) << 2) | (fb_concat & 3),
+							(((src1 >> 0) & 0x1F) << 3) | fb_concat,
+							0xFF);
+					row_addr += 4;
+					i += 2;
+				}
+				for (; i < width; i++, row_addr += bpp)
+				{
+					const u16 src = *(const u16 *)&vram[pvr_map32(row_addr) & ~1u];
 					*dst++ = Packer::pack(
 							(((src >> 11) & 0x1F) << 3) | fb_concat,
 							(((src >> 5) & 0x3F) << 2) | (fb_concat & 3),
 							(((src >> 0) & 0x1F) << 3) | fb_concat,
 							0xFF);
-					addr += bpp;
 				}
-				addr += modulus * bpp;
+				addr += width * bpp + modulus * bpp;
 			}
 			break;
 		case fbde_888:		// 888 RGB
@@ -804,17 +866,17 @@ void ReadFramebuffer(const FramebufferInfo& info, PixelBuffer<u32>& pb, int& wid
 			{
 				for (int i = 0; i < width; i += 4)
 				{
-					u32 src = pvr_read32p<u32>(addr);
+					u32 src = *(const u32 *)&vram[pvr_map32(addr)];
 					*dst++ = Packer::pack(src >> 16, src >> 8, src, 0xff);
 					addr += 4;
 					if (i + 1 >= width)
 						break;
-					u32 src2 = pvr_read32p<u32>(addr);
+					u32 src2 = *(const u32 *)&vram[pvr_map32(addr)];
 					*dst++ = Packer::pack(src2 >> 8, src2, src >> 24, 0xff);
 					addr += 4;
 					if (i + 2 >= width)
 						break;
-					u32 src3 = pvr_read32p<u32>(addr);
+					u32 src3 = *(const u32 *)&vram[pvr_map32(addr)];
 					*dst++ = Packer::pack(src3, src2 >> 24, src2 >> 16, 0xff);
 					addr += 4;
 					if (i + 3 >= width)
@@ -827,11 +889,10 @@ void ReadFramebuffer(const FramebufferInfo& info, PixelBuffer<u32>& pb, int& wid
 		case fbde_C888:     // 0888 RGB
 			for (int y = 0; y < height; y++)
 			{
-				for (int i = 0; i < width; i++)
+				for (int i = 0; i < width; i++, addr += bpp)
 				{
-					u32 src = pvr_read32p<u32>(addr);
+					const u32 src = *(const u32 *)&vram[pvr_map32(addr)];
 					*dst++ = Packer::pack(src >> 16, src >> 8, src, 0xff);
-					addr += bpp;
 				}
 				addr += modulus * bpp;
 			}

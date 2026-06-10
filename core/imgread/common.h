@@ -218,6 +218,10 @@ struct RawTrackFile : TrackFile
 	hostfs::File *file;
 	s32 offset;
 	u32 fmt;
+	u32 cache_start_fad = ~0u;
+	u32 cache_sectors = 0;
+	std::vector<u8> read_cache;
+	static constexpr u32 READ_AHEAD_SECTORS = 64;
 
 	RawTrackFile(hostfs::File *file, u32 file_offs, u32 first_fad, u32 secfmt)
 	{
@@ -244,12 +248,27 @@ struct RawTrackFile : TrackFile
 			return false;
 		}
 
-		file->seek(offset + FAD * fmt, SEEK_SET);
-		if (file->read(dst, 1, fmt) != fmt)
+		if (cache_start_fad != ~0u && FAD >= cache_start_fad && FAD < cache_start_fad + cache_sectors)
 		{
+			memcpy(dst, read_cache.data() + (FAD - cache_start_fad) * fmt, fmt);
+			return true;
+		}
+
+		cache_start_fad = FAD;
+		const u32 bytes_to_read = READ_AHEAD_SECTORS * fmt;
+		if (read_cache.size() < bytes_to_read)
+			read_cache.resize(bytes_to_read);
+		file->seek(offset + (s64)FAD * fmt, SEEK_SET);
+		const size_t bytes_read = file->read(read_cache.data(), 1, bytes_to_read);
+		if (bytes_read < fmt)
+		{
+			cache_start_fad = ~0u;
+			cache_sectors = 0;
 			WARN_LOG(GDROM, "Failed or truncated GD-Rom read");
 			return false;
 		}
+		cache_sectors = (u32)(bytes_read / fmt);
+		memcpy(dst, read_cache.data(), fmt);
 		return true;
 	}
 

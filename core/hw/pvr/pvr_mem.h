@@ -19,6 +19,24 @@ void YUV_deserialize(Deserializer& deser);
 void YUV_reset();
 
 // 32-bit vram path handlers
+inline u32 pvr_map32(u32 offset32)
+{
+	//64b wide bus is achieved by interleaving the banks every 32 bits
+	constexpr u32 VRAM_BANK_BIT = 0x400000;
+	const u32 static_bits = VRAM_MASK - (VRAM_BANK_BIT * 2 - 1) + 3;
+	const u32 offset_bits = (VRAM_BANK_BIT - 1) & ~3;
+
+	const u32 bank = (offset32 & VRAM_BANK_BIT) / VRAM_BANK_BIT;
+
+	u32 rv = offset32 & static_bits;
+
+	rv |= (offset32 & offset_bits) * 2;
+
+	rv |= bank * 4;
+
+	return rv;
+}
+
 template<typename T> T DYNACALL pvr_read32p(u32 addr);
 template<typename T, bool Internal = false> void DYNACALL pvr_write32p(u32 addr, T data);
 // Area 4 handlers
