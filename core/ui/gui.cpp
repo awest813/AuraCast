@@ -992,7 +992,8 @@ static void buildLibraryEntries(const std::vector<GameMedia>& games, ImGuiTextFi
 			entry.art = boxart.getBoxart(game);
 			if (!entry.art.name.empty())
 				entry.displayName = entry.art.name;
-			passFilter = passFilter || filter.PassFilter(entry.displayName.c_str());
+			if (!passFilter && entry.displayName != game.name)
+				passFilter = filter.PassFilter(entry.displayName.c_str());
 			if (config::FetchBoxart && !entry.art.scraped && !entry.art.busy)
 				entry.requestBoxartLoad = true;
 		}

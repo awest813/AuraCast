@@ -100,41 +100,37 @@ static std::string getFontPath(const char* patternText)
 	{
 		return "";
 	}
-	
+
+	static FcConfig* cachedConfig = fcInitLoadConfigAndFonts();
+	if (cachedConfig == nullptr)
+		return "";
+
 	const int fcMatchPattern = 0;
-	
+
 	std::string path;
-	FcConfig* config = fcInitLoadConfigAndFonts();
-	if (config)
+	FcPattern* pattern = fcNameParse(reinterpret_cast<const FcChar8*>(patternText));
+	if (pattern)
 	{
-		FcPattern* pattern = fcNameParse(reinterpret_cast<const FcChar8*>(patternText));
-		if (pattern)
+		fcConfigSubstitute(cachedConfig, pattern, fcMatchPattern);
+		fcDefaultSubstitute(pattern);
+
+		FcResult result = FcResultNoMatch;
+		FcPattern* match = fcFontMatch(cachedConfig, pattern, &result);
+		if (match)
 		{
-			fcConfigSubstitute(config, pattern, fcMatchPattern);
-			fcDefaultSubstitute(pattern);
-			
-			FcResult result = FcResultNoMatch;
-			FcPattern* match = fcFontMatch(config, pattern, &result);
-			if (match)
+			if (result == FcResultMatch)
 			{
-				if (result == FcResultMatch)
-				{
-					FcChar8* file = nullptr;
-					if (fcPatternGetString(match, "file", 0, &file) == FcResultMatch && file)
-					{
-						path = reinterpret_cast<const char*>(file);
-					}
-				}
-				
-				fcPatternDestroy(match);
+				FcChar8* file = nullptr;
+				if (fcPatternGetString(match, "file", 0, &file) == FcResultMatch && file)
+					path = reinterpret_cast<const char*>(file);
 			}
-			
-			fcPatternDestroy(pattern);
+
+			fcPatternDestroy(match);
 		}
-		
-		fcConfigDestroy(config);
+
+		fcPatternDestroy(pattern);
 	}
-	
+
 	return path;
 }
 #endif

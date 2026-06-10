@@ -25,6 +25,7 @@
 #include "oslib/i18n.h"
 #include <algorithm>
 #include <android/input.h>
+#include <unordered_set>
 
 extern jobject inputDeviceManager;
 extern jmethodID inputDeviceManager_rumble;
@@ -66,6 +67,11 @@ public:
 		_name = name;
 		_unique_id = unique_id;
 		INFO_LOG(INPUT, "Android: Opened joystick %d on port %d: '%s' descriptor '%s'", id, maple_port, _name.c_str(), _unique_id.c_str());
+
+		for (int axis : halfAxes)
+			halfAxisSet.insert(axis);
+		for (int axis : fullAxes)
+			fullAxisSet.insert(axis);
 
 		loadMapping();
 		for (int axis : halfAxes)
@@ -219,8 +225,8 @@ public:
 		this->rumbleEnabled = rumbleEnabled;
 	}
 
-	bool hasHalfAxis(int axis) const { return std::find(halfAxes.begin(), halfAxes.end(), axis) != halfAxes.end(); }
-	bool hasFullAxis(int axis) const { return std::find(fullAxes.begin(), fullAxes.end(), axis) != fullAxes.end(); }
+	bool hasHalfAxis(int axis) const { return halfAxisSet.count(axis) != 0; }
+	bool hasFullAxis(int axis) const { return fullAxisSet.count(axis) != 0; }
 
 	void resetMappingToDefault(bool arcade, bool gamepad) override
 	{
@@ -241,6 +247,8 @@ private:
 	static std::map<int, std::shared_ptr<AndroidGamepadDevice>> android_gamepads;
 	std::vector<int> fullAxes;
 	std::vector<int> halfAxes;
+	std::unordered_set<int> fullAxisSet;
+	std::unordered_set<int> halfAxisSet;
 };
 
 std::map<int, std::shared_ptr<AndroidGamepadDevice>> AndroidGamepadDevice::android_gamepads;

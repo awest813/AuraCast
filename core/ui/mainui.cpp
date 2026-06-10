@@ -51,8 +51,10 @@ bool mainui_rend_frame()
 			forceReinit = true;
 			return false;
 		}
-#ifndef TARGET_IPHONE
-		std::this_thread::sleep_for(std::chrono::milliseconds(16));
+#if !defined(TARGET_IPHONE)
+		// When VSync is enabled, present() already paces the UI loop.
+		if (!config::VSync)
+			std::this_thread::sleep_for(std::chrono::milliseconds(16));
 #endif
 	}
 	else
