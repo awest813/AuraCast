@@ -50,6 +50,8 @@ struct VramPageLockList
 				return;
 		if (count < MAX_LOCKS)
 			locks[count++] = block;
+		else
+			WARN_LOG(PVR, "VRAM page lock list full; texture invalidation may be missed");
 	}
 
 	void remove(vram_block* block)
@@ -125,8 +127,19 @@ bool VramLockedWriteOffset(size_t offset)
 
 		for (u8 i = 0; i < pending_count; i++)
 		{
-			if (pending[i] != nullptr)
-				pending[i]->texture->invalidate();
+			vram_block *block = pending[i];
+			if (block == nullptr)
+				continue;
+			// Skip duplicate entries for the same block on this page.
+			bool duplicate = false;
+			for (u8 j = 0; j < i; j++)
+				if (pending[j] == block)
+				{
+					duplicate = true;
+					break;
+				}
+			if (!duplicate)
+				block->texture->invalidate();
 		}
 
 		addrspace::unprotectVram((u32)(offset & ~PAGE_MASK), PAGE_SIZE);

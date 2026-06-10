@@ -250,7 +250,7 @@ struct RawTrackFile : TrackFile
 
 		if (cache_start_fad != ~0u && FAD >= cache_start_fad && FAD < cache_start_fad + cache_sectors)
 		{
-			memcpy(dst, read_cache.data() + (FAD - cache_start_fad) * fmt, fmt);
+			memcpy(dst, read_cache.data() + (size_t)(FAD - cache_start_fad) * fmt, fmt);
 			return true;
 		}
 
