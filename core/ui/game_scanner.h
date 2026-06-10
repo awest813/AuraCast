@@ -48,9 +48,7 @@ class GameScanner
 	std::unordered_set<std::string> arcade_gdroms;
 	using LockGuard = std::lock_guard<std::mutex>;
 
-	void insert_game(const GameMedia& game);
-	void insert_arcade_game(GameMedia game);
-	void add_game_directory(const std::string& path);
+	void add_game_directory(const std::string& path, std::vector<GameMedia>& discovered);
 
 public:
 	~GameScanner()

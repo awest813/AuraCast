@@ -949,6 +949,98 @@ static bool gameImageButton(ImguiTexture& texture, const std::string& tooltip, I
     return pressed;
 }
 
+struct LibraryDisplayEntry
+{
+	GameMedia game;
+	std::string displayName;
+	GameBoxart art;
+	bool requestBoxartLoad = false;
+};
+
+static bool includeGameInLibrary(const GameMedia& game)
+{
+	if (gui_state == GuiState::SelectDisk)
+	{
+		std::string extension = get_file_extension(game.path);
+		if (!game.device && extension != "gdi" && extension != "chd"
+				&& extension != "cdi" && extension != "cue")
+			// Only dreamcast disks
+			return false;
+		if (game.path.empty())
+			// Dreamcast BIOS isn't a disk
+			return false;
+	}
+	return true;
+}
+
+static void buildLibraryEntries(const std::vector<GameMedia>& games, ImGuiTextFilter& filter,
+		std::vector<LibraryDisplayEntry>& entries)
+{
+	entries.clear();
+	entries.reserve(games.size());
+	for (const auto& game : games)
+	{
+		if (!includeGameInLibrary(game))
+			continue;
+
+		LibraryDisplayEntry entry;
+		entry.game = game;
+		entry.displayName = game.name;
+		bool passFilter = filter.PassFilter(entry.displayName.c_str());
+		if (config::BoxartDisplayMode && !game.device)
+		{
+			entry.art = boxart.getBoxart(game);
+			if (!entry.art.name.empty())
+				entry.displayName = entry.art.name;
+			passFilter = passFilter || filter.PassFilter(entry.displayName.c_str());
+			if (config::FetchBoxart && !entry.art.scraped && !entry.art.busy)
+				entry.requestBoxartLoad = true;
+		}
+		if (passFilter)
+			entries.push_back(std::move(entry));
+	}
+}
+
+static bool launchLibraryEntry(LibraryDisplayEntry& entry)
+{
+	if (entry.requestBoxartLoad)
+	{
+		entry.art = boxart.getBoxartAndLoad(entry.game);
+		entry.requestBoxartLoad = false;
+		if (!entry.art.name.empty())
+			entry.displayName = entry.art.name;
+	}
+	else if (!config::BoxartDisplayMode)
+	{
+		entry.art = boxart.getBoxart(entry.game);
+	}
+	settings.content.title = entry.art.name;
+	if (settings.content.title.empty() || settings.content.title == entry.game.fileName)
+		settings.content.title = get_file_basename(entry.game.fileName);
+	if (gui_state == GuiState::SelectDisk)
+	{
+		try {
+			emu.insertGdrom(entry.game.path);
+			gui_setState(GuiState::Closed);
+		} catch (const FlycastException& e) {
+			gui_error(e.what());
+		}
+		return false;
+	}
+	gui_start_game(entry.game.path);
+	return true;
+}
+
+static void ensureBoxartLoaded(LibraryDisplayEntry& entry)
+{
+	if (!entry.requestBoxartLoad)
+		return;
+	entry.art = boxart.getBoxartAndLoad(entry.game);
+	entry.requestBoxartLoad = false;
+	if (!entry.art.name.empty())
+		entry.displayName = entry.art.name;
+}
+
 #ifdef TARGET_UWP
 void gui_load_game()
 {
@@ -1051,82 +1143,75 @@ static void gui_display_content()
 		else
 			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ScaledVec2(8, 20));
 
-		int counter = 0;
 		bool gameListEmpty = false;
+		std::vector<GameMedia> games;
 		{
-			scanner.get_mutex().lock();
-			gameListEmpty = scanner.get_game_list().empty();
-			for (const auto& game : scanner.get_game_list())
+			std::lock_guard<std::mutex> lock(scanner.get_mutex());
+			games = scanner.get_game_list();
+		}
+		gameListEmpty = games.empty();
+
+		std::vector<LibraryDisplayEntry> entries;
+		buildLibraryEntries(games, filter, entries);
+
+		bool gameLaunched = false;
+		if (config::BoxartDisplayMode)
+		{
+			const int itemCount = (int)entries.size();
+			const int rowCount = (itemCount + itemsPerLine - 1) / itemsPerLine;
+			const float rowHeight = responsiveBoxSize + ImGui::GetTextLineHeightWithSpacing()
+					+ ImGui::GetStyle().ItemSpacing.y + ImGui::GetStyle().FramePadding.y * 2.f;
+
+			ImGuiListClipper clipper;
+			clipper.Begin(rowCount, rowHeight);
+			while (clipper.Step() && !gameLaunched)
 			{
-				if (gui_state == GuiState::SelectDisk)
+				for (int row = clipper.DisplayStart; row < clipper.DisplayEnd && !gameLaunched; row++)
 				{
-					std::string extension = get_file_extension(game.path);
-					if (!game.device && extension != "gdi" && extension != "chd"
-							&& extension != "cdi" && extension != "cue")
-						// Only dreamcast disks
-						continue;
-					if (game.path.empty())
-						// Dreamcast BIOS isn't a disk
-						continue;
-				}
-				std::string gameName = game.name;
-				bool passFilter = filter.PassFilter(gameName.c_str());
-				GameBoxart art;
-				if (config::BoxartDisplayMode && !game.device)
-				{
-					art = boxart.getBoxartAndLoad(game);
-					gameName = art.name;
-					passFilter = passFilter || filter.PassFilter(gameName.c_str());
-				}
-				if (passFilter)
-				{
-					ImguiID _(game.path.empty() ? "bios" : game.path);
-					bool pressed = false;
-					if (config::BoxartDisplayMode)
+					for (int col = 0; col < itemsPerLine; col++)
 					{
-						if (counter % itemsPerLine != 0)
+						const int idx = row * itemsPerLine + col;
+						if (idx >= itemCount)
+							break;
+						LibraryDisplayEntry& entry = entries[idx];
+						ensureBoxartLoaded(entry);
+						if (col != 0)
 							ImGui::SameLine();
-						counter++;
-						// Put the image inside a child window so we can detect when it's fully clipped and doesn't need to be loaded
+						ImguiID _(entry.game.path.empty() ? "bios" : entry.game.path);
+						bool pressed = false;
 						if (ImGui::BeginChild("img", ImVec2(0, 0), ImGuiChildFlags_AutoResizeX | ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_NavFlattened))
 						{
-							ImguiFileTexture tex(art.boxartPath);
-							pressed = gameImageButton(tex, game.name, responsiveBoxVec2, gameName);
+							ImguiFileTexture tex(entry.art.boxartPath);
+							pressed = gameImageButton(tex, entry.game.name, responsiveBoxVec2, entry.displayName);
 						}
 						ImGui::EndChild();
-					}
-					else
-					{
-						pressed = ImGui::Selectable(gameName.c_str());
-					}
-					if (pressed)
-					{
-						if (!config::BoxartDisplayMode)
-							art = boxart.getBoxart(game);
-						settings.content.title = art.name;
-						if (settings.content.title.empty() || settings.content.title == game.fileName)
-							settings.content.title = get_file_basename(game.fileName);
-						if (gui_state == GuiState::SelectDisk)
+						if (pressed && launchLibraryEntry(entry))
 						{
-							try {
-								emu.insertGdrom(game.path);
-								gui_setState(GuiState::Closed);
-							} catch (const FlycastException& e) {
-								gui_error(e.what());
-							}
-						}
-						else
-						{
-							std::string gamePath(game.path);
-							scanner.get_mutex().unlock();
-							gui_start_game(gamePath);
-							scanner.get_mutex().lock();
+							gameLaunched = true;
 							break;
 						}
 					}
 				}
 			}
-			scanner.get_mutex().unlock();
+		}
+		else
+		{
+			const float itemHeight = ImGui::GetTextLineHeightWithSpacing();
+			ImGuiListClipper clipper;
+			clipper.Begin((int)entries.size(), itemHeight);
+			while (clipper.Step() && !gameLaunched)
+			{
+				for (int idx = clipper.DisplayStart; idx < clipper.DisplayEnd; idx++)
+				{
+					LibraryDisplayEntry& entry = entries[idx];
+					ImguiID _(entry.game.path.empty() ? "bios" : entry.game.path);
+					if (ImGui::Selectable(entry.displayName.c_str()) && launchLibraryEntry(entry))
+					{
+						gameLaunched = true;
+						break;
+					}
+				}
+			}
 		}
 		bool addContent = false;
 #if !defined(TARGET_IPHONE)

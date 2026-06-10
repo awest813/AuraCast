@@ -21,6 +21,10 @@
 #include <vector>
 #include <algorithm>
 #include <cstdlib>
+#include <future>
+#include <mutex>
+#include <unordered_map>
+#include <chrono>
 
 #include "types.h"
 #include "stdclass.h"
@@ -563,29 +567,87 @@ static u8 *loadImage(const std::string& path, int& width, int& height)
 	return imgData;
 }
 
+struct LoadedFilePic
+{
+	u8 *data = nullptr;
+	int width = 0;
+	int height = 0;
+};
+
+struct PendingFileTexture
+{
+	std::future<LoadedFilePic> future;
+};
+
+static std::mutex pendingFileTexturesMutex;
+static std::unordered_map<std::string, PendingFileTexture> pendingFileTextures;
+static std::unordered_map<std::string, LoadedFilePic> readyFileTextures;
+static constexpr int MAX_PENDING_FILE_TEXTURES = 32;
+
 int ImguiFileTexture::textureLoadCount;
+
+static ImTextureID uploadLoadedFileTexture(const std::string& path, LoadedFilePic& loadedPic, bool nearestSampling)
+{
+	if (loadedPic.data == nullptr)
+		return {};
+	if (textureLoadCount >= 10)
+		return {};
+	textureLoadCount++;
+	ImTextureID id{};
+	try {
+		id = imguiDriver->updateTextureAndAspectRatio(path, loadedPic.data, loadedPic.width, loadedPic.height, nearestSampling);
+	} catch (...) {
+		// vulkan can throw during resizing
+	}
+	free(loadedPic.data);
+	loadedPic.data = nullptr;
+	return id;
+}
 
 ImTextureID ImguiFileTexture::getId()
 {
 	if (path.empty())
 		return {};
 	ImTextureID id = imguiDriver->getTexture(path);
-	if (id == ImTextureID() && textureLoadCount < 10)
+	if (id != ImTextureID())
+		return id;
+
 	{
-		textureLoadCount++;
-		int width, height;
-		u8 *imgData = loadImage(path, width, height);
-		if (imgData != nullptr)
+		std::lock_guard<std::mutex> lock(pendingFileTexturesMutex);
+		auto readyIt = readyFileTextures.find(path);
+		if (readyIt != readyFileTextures.end())
 		{
-			try {
-				id = imguiDriver->updateTextureAndAspectRatio(path, imgData, width, height, nearestSampling);
-			} catch (...) {
-				// vulkan can throw during resizing
-			}
-			free(imgData);
+			id = uploadLoadedFileTexture(path, readyIt->second, nearestSampling);
+			if (readyIt->second.data == nullptr)
+				readyFileTextures.erase(readyIt);
+			return id;
 		}
+
+		auto it = pendingFileTextures.find(path);
+		if (it != pendingFileTextures.end())
+		{
+			if (it->second.future.valid()
+					&& it->second.future.wait_for(std::chrono::seconds::zero()) == std::future_status::ready)
+			{
+				LoadedFilePic loadedPic = it->second.future.get();
+				pendingFileTextures.erase(it);
+				id = uploadLoadedFileTexture(path, loadedPic, nearestSampling);
+				if (loadedPic.data != nullptr)
+					readyFileTextures.emplace(path, loadedPic);
+			}
+			return id;
+		}
+		if ((int)pendingFileTextures.size() >= MAX_PENDING_FILE_TEXTURES)
+			return {};
+		PendingFileTexture pending;
+		pending.future = std::async(std::launch::async, [path]() {
+			LoadedFilePic loadedPic;
+			loadedPic.data = loadImage(path, loadedPic.width, loadedPic.height);
+			return loadedPic;
+		});
+		pendingFileTextures.emplace(path, std::move(pending));
 	}
-	return id;
+	return {};
 }
 
 std::future<ImguiStateTexture::LoadedPic> ImguiStateTexture::asyncLoad;
