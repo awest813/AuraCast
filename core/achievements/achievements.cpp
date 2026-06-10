@@ -65,6 +65,8 @@ public:
 	static Achievements& Instance();
 
 private:
+	std::vector<Achievement> rebuildAchievementList();
+	void invalidateAchievementList();
 	bool createClient();
 	std::string getGameHash();
 	void loadGame();
@@ -112,6 +114,8 @@ private:
 	std::string cachePath;
 	std::unordered_map<u64, std::string> cacheMap;
 	std::mutex cacheMutex;
+	std::vector<Achievement> cachedAchievementList;
+	bool achievementListCacheDirty = true;
 	WorkerThread taskThread {"RA-background"};
 
 	PeriodicThread idleThread { "RA-idle", [this]() {
@@ -408,6 +412,11 @@ void Achievements::clientLoginWithPasswordCallback(int result, const char *error
 	delete promise;
 }
 
+void Achievements::invalidateAchievementList()
+{
+	achievementListCacheDirty = true;
+}
+
 void Achievements::logout()
 {
 	unloadGame();
@@ -416,6 +425,7 @@ void Achievements::logout()
 	config::AchievementsToken = "";
 	SaveSettings();
 	loggedOn = false;
+	invalidateAchievementList();
 }
 
 void Achievements::clientMessageCallback(const char* message, const rc_client_t* client)
@@ -565,6 +575,7 @@ void Achievements::handleResetEvent(const rc_client_event_t *event)
 	// This never seems to be called, probably because hardcore mode is enabled before starting the game.
 	INFO_LOG(COMMON, "RA: Resetting runtime due to reset event");
 	rc_client_reset(rc_client);
+	invalidateAchievementList();
 }
 
 void Achievements::handleUnlockEvent(const rc_client_event_t *event)
@@ -585,6 +596,7 @@ void Achievements::handleUnlockEvent(const rc_client_event_t *event)
 			notifier.notify(Notification::Login, image, text, description);
 		});
 	}
+	invalidateAchievementList();
 }
 
 void Achievements::handleAchievementChallengeIndicatorShowEvent(const rc_client_event_t *event)
@@ -697,6 +709,7 @@ void Achievements::handleUpdateAchievementProgress(const rc_client_event_t *even
 			image = getOrDownloadImage(url.c_str());
 		notifier.notify(Notification::Progress, image, progress);
 	});
+	invalidateAchievementList();
 }
 
 static Disc *hashDisk;
@@ -894,6 +907,7 @@ void Achievements::gameLoaded(int result, const char *errorMessage)
 	}
 	active = true;
 	loadingGame = false;
+	invalidateAchievementList();
 	EventManager::listen(Event::VBlank, emuEventCallback, this);
 	NOTICE_LOG(COMMON, "RA: game %d loaded: %s, achievements %d leaderboards %d rich presence %d", info->id, info->title,
 			rc_client_has_achievements(rc_client), rc_client_has_leaderboards(rc_client), rc_client_has_rich_presence(rc_client));
@@ -932,6 +946,7 @@ void Achievements::unloadGame()
 	stopThreads();
 	rc_client_unload_game(rc_client);
 	settings.raHardcoreMode = false;
+	invalidateAchievementList();
 }
 
 void Achievements::diskChange()
@@ -983,9 +998,11 @@ Game Achievements::getCurrentGame()
 	return Game{ image, info->title, summary.num_unlocked_achievements, summary.num_core_achievements, summary.points_unlocked, summary.points_core };
 }
 
-std::vector<Achievement> Achievements::getAchievementList()
+std::vector<Achievement> Achievements::rebuildAchievementList()
 {
 	std::vector<Achievement> achievements;
+	if (rc_client == nullptr)
+		return achievements;
 	rc_client_achievement_list_t *list = rc_client_create_achievement_list(rc_client,
 		RC_CLIENT_ACHIEVEMENT_CATEGORY_CORE_AND_UNOFFICIAL,
 		RC_CLIENT_ACHIEVEMENT_LIST_GROUPING_PROGRESS);
@@ -1019,6 +1036,16 @@ std::vector<Achievement> Achievements::getAchievementList()
 		});
 
 	return achievements;
+}
+
+std::vector<Achievement> Achievements::getAchievementList()
+{
+	if (achievementListCacheDirty)
+	{
+		cachedAchievementList = rebuildAchievementList();
+		achievementListCacheDirty = false;
+	}
+	return cachedAchievementList;
 }
 
 bool Achievements::canPause()

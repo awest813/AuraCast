@@ -27,6 +27,7 @@
 
 #include <sstream>
 #include <locale>
+#include <unordered_map>
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_JPEG
 #define STBI_ONLY_PNG
@@ -68,7 +69,7 @@ public:
 private:
 	bool custom_textures_available = false;
 	std::string textures_path;
-	std::map<u32, std::string> texture_map;
+	std::unordered_map<u32, std::string> texture_map;
 };
 
 bool CustomTextureSource::loadMap()

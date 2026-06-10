@@ -184,7 +184,7 @@ void Boxart::saveDatabase()
 			if (game.second.scraped || game.second.parsed)
 				array.push_back(game.second.to_json(basePath));
 	}
-	std::string serialized = array.dump(4, ' ', false, json::error_handler_t::replace);
+	std::string serialized = array.dump();
 
 	FILE *file = nowide::fopen(db_name.c_str(), "wt");
 	if (file == nullptr) {
@@ -212,6 +212,15 @@ void Boxart::loadDatabase()
 
 	DEBUG_LOG(COMMON, "Loading boxart database from %s", db_name.c_str());
 	std::string all_data;
+	if (fseek(f, 0, SEEK_END) == 0)
+	{
+		long fileSize = ftell(f);
+		if (fileSize > 0)
+		{
+			all_data.reserve((size_t)fileSize);
+			fseek(f, 0, SEEK_SET);
+		}
+	}
 	char buf[4096];
 	while (true)
 	{
