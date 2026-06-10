@@ -29,13 +29,7 @@ static bool operator<(const GameMedia &left, const GameMedia &right)
 			|| (left.arcade == right.arcade && i18n::locale()(left.name, right.name));
 }
 
-void GameScanner::insert_game(const GameMedia& game)
-{
-	LockGuard _(mutex);
-	game_list.insert(std::upper_bound(game_list.begin(), game_list.end(), game), game);
-}
-
-void GameScanner::add_game_directory(const std::string& path)
+void GameScanner::add_game_directory(const std::string& path, std::vector<GameMedia>& discovered)
 {
 	hostfs::DirectoryTree tree(path);
 	std::string emptyParentPath;
@@ -44,7 +38,7 @@ void GameScanner::add_game_directory(const std::string& path)
 		if (!running)
 			break;
 
-		if (game_list.empty())
+		if (discovered.empty())
 		{
 			// This won't work for android content uris
 			size_t slash = get_last_slash_pos(item.path);
@@ -80,13 +74,13 @@ void GameScanner::add_game_directory(const std::string& path)
 				continue;
 			gameName = it->second->description;
 			fileName = fileName + " (" + gameName + ")";
-			insert_game(GameMedia{ fileName, item.path, item.name, gameName, true });
+			discovered.push_back(GameMedia{ fileName, item.path, item.name, gameName, true });
 			continue;
 		}
 		else if (extension == "bin" || extension == "lst" || extension == "dat")
 		{
 			if (!config::HideLegacyNaomiRoms)
-				insert_game(GameMedia{ fileName, item.path, item.name, gameName, true });
+				discovered.push_back(GameMedia{ fileName, item.path, item.name, gameName, true });
 			continue;
 		}
 		else if (extension == "chd" || extension == "gdi")
@@ -99,7 +93,7 @@ void GameScanner::add_game_directory(const std::string& path)
 		}
 		else if (extension != "cdi" && extension != "cue")
 			continue;
-		insert_game(GameMedia{ fileName, item.path, item.name, gameName });
+		discovered.push_back(GameMedia{ fileName, item.path, item.name, gameName });
 	}
 }
 
@@ -132,23 +126,22 @@ void GameScanner::fetch_game_list()
 					if (game->gdrom_name != nullptr)
 						arcade_gdroms.insert(game->gdrom_name);
 				}
-			{
-				LockGuard _(mutex);
-				game_list.clear();
-			}
+			std::vector<GameMedia> discovered;
 			for (const auto& path : config::ContentPath.get())
 			{
 				try {
-					add_game_directory(path);
+					add_game_directory(path, discovered);
 				} catch (const hostfs::StorageException& e) {
 					// ignore
 				}
 				if (!running)
 					break;
 			}
+			std::sort(discovered.begin(), discovered.end());
 			std::string dcbios = hostfs::findFlash("dc_", "%bios.bin;%boot.bin");
 			{
 				LockGuard _(mutex);
+				game_list = std::move(discovered);
 				if (!config::loadBool("config", "HideCdromDrives", false))
 				{
 					// CD-ROM devices
